@@ -1,2 +1,0 @@
-# Moneymind
-Expense Tracker app.
