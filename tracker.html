@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MoneyMind - Expense Tracker</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://alcdn.msftauth.net/browser/2.28.1/js/msal-browser.min.js"></script>
+    <!-- Same styles as before -->
+</head>
+<body>
+    <!-- Same HTML structure as before -->
+    <button id="logout-btn">Logout</button> <!-- Add logout button -->
+
+    <script>
+        // MSAL Config (same as landing page)
+        const msalConfig = { /* Same config */ };
+        const msalInstance = new msal.PublicClientApplication(msalConfig);
+
+        // Check login on load
+        msalInstance.handleRedirectPromise().then(() => {
+            const accounts = msalInstance.getAllAccounts();
+            if (accounts.length === 0) {
+                window.location.href = 'index.html'; // Redirect if not logged in
+            }
+        });
+
+        // Logout
+        document.getElementById('logout-btn').addEventListener('click', () => {
+            msalInstance.logout();
+        });
+
+        // API Base URL (Replace with your Azure Functions URL)
+        const apiBase = "https://your-function-app.azurewebsites.net/api";
+
+        // Replace localStorage with API calls
+        async function loadData() {
+            const token = sessionStorage.getItem('accessToken');
+            const response = await fetch(`${apiBase}/getData`, {
+                headers: { Authorization: `Bearer ${token}` }
+            });
+            const data = await response.json();
+            return data; // { expenses: [...], incomes: [...] }
+        }
+
+        async function saveData(data) {
+            const token = sessionStorage.getItem('accessToken');
+            await fetch(`${apiBase}/saveData`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+                body: JSON.stringify(data)
+            });
+        }
+
+        // Update the script to use loadData() and saveData() instead of localStorage
+        // Example: In renderLists, load from API on init, save on changes
+        document.addEventListener('DOMContentLoaded', async () => {
+            const data = await loadData();
+            let expenses = data.expenses || [];
+            let incomes = data.incomes || [];
+
+            // Rest of the code remains the same, but replace localStorage calls with saveData()
+            // E.g., in saveData function: await saveData({ expenses, incomes });
+        });
+    </script>
+</body>
+</html>
