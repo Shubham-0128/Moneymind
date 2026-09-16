@@ -859,3 +859,485 @@ input::placeholder {
 .btn-link:hover {
     color: var(--primary-hover);
 }
+
+/* ==========================================================================
+   User Authentication & Profile Styles
+   ========================================================================== */
+
+/* Header Profile Container */
+.header-profile {
+    position: relative;
+}
+
+.profile-btn-wrap {
+    position: relative;
+}
+
+.profile-trigger-btn {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    background: #FFFFFF;
+    border: 1px solid var(--border-color);
+    padding: 5px 14px 5px 6px;
+    border-radius: 9999px;
+    cursor: pointer;
+    box-shadow: var(--shadow-sm);
+    transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.profile-trigger-btn:hover {
+    border-color: var(--primary);
+    box-shadow: 0 4px 14px rgba(13, 148, 136, 0.15);
+    transform: translateY(-1px);
+}
+
+.avatar-badge {
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    background: linear-gradient(135deg, var(--primary), #0F766E);
+    color: #FFFFFF;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: 700;
+    font-size: 12px;
+    letter-spacing: 0.5px;
+    font-family: 'Space Grotesk', sans-serif;
+    flex-shrink: 0;
+}
+
+.profile-name-text {
+    font-weight: 600;
+    font-size: 14px;
+    color: var(--text-main);
+    max-width: 120px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.dropdown-arrow {
+    color: var(--text-light);
+    transition: transform 0.2s ease;
+}
+
+.profile-trigger-btn[aria-expanded="true"] .dropdown-arrow {
+    transform: rotate(180deg);
+}
+
+/* Dropdown Menu */
+.profile-dropdown {
+    position: absolute;
+    top: calc(100% + 8px);
+    right: 0;
+    width: 250px;
+    background: #FFFFFF;
+    border-radius: var(--radius-md);
+    border: 1px solid var(--border-color);
+    box-shadow: 0 12px 32px -4px rgba(15, 23, 42, 0.16), 0 4px 12px rgba(15, 23, 42, 0.06);
+    padding: 12px;
+    z-index: 200;
+    animation: dropdownFadeIn 0.18s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.dropdown-user-info {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 4px 4px 8px 4px;
+}
+
+.dropdown-avatar {
+    width: 36px;
+    height: 36px;
+    border-radius: 50%;
+    background: linear-gradient(135deg, var(--primary), #0F766E);
+    color: #FFFFFF;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: 700;
+    font-size: 13px;
+    font-family: 'Space Grotesk', sans-serif;
+    flex-shrink: 0;
+}
+
+.dropdown-details {
+    overflow: hidden;
+}
+
+.dropdown-name {
+    font-weight: 700;
+    font-size: 13.5px;
+    color: var(--text-main);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    font-family: 'Space Grotesk', sans-serif;
+}
+
+.dropdown-email {
+    font-size: 11.5px;
+    color: var(--text-muted);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.dropdown-session-badge {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 11px;
+    color: #065F46;
+    background: #D1FAE5;
+    padding: 4px 8px;
+    border-radius: 6px;
+    margin: 4px 0 8px 0;
+    font-weight: 500;
+}
+
+.status-dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: #10B981;
+    display: inline-block;
+    box-shadow: 0 0 0 2px rgba(16, 185, 129, 0.2);
+}
+
+.dropdown-divider {
+    height: 1px;
+    background: var(--border-color);
+    margin: 6px 0;
+}
+
+.dropdown-item {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    width: 100%;
+    padding: 8px 10px;
+    border: none;
+    background: transparent;
+    border-radius: 8px;
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--text-main);
+    cursor: pointer;
+    transition: background 0.15s ease, color 0.15s ease;
+    text-align: left;
+}
+
+.dropdown-item:hover {
+    background: var(--bg-main);
+    color: var(--primary);
+}
+
+.dropdown-item.text-danger {
+    color: var(--danger);
+}
+
+.dropdown-item.text-danger:hover {
+    background: var(--danger-light);
+    color: #B91C1C;
+}
+
+.btn-outline-primary {
+    background: #FFFFFF;
+    border: 1.5px solid var(--primary);
+    color: var(--primary);
+    border-radius: 9999px;
+    padding: 7px 18px;
+    font-weight: 600;
+    font-size: 13.5px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.btn-outline-primary:hover {
+    background: var(--primary);
+    color: #FFFFFF;
+    box-shadow: 0 4px 12px rgba(13, 148, 136, 0.25);
+    transform: translateY(-1px);
+}
+
+/* ==========================================================================
+   Auth Modal & Overlay
+   ========================================================================== */
+.modal-backdrop {
+    position: fixed;
+    inset: 0;
+    background: rgba(15, 23, 42, 0.65);
+    backdrop-filter: blur(6px);
+    -webkit-backdrop-filter: blur(6px);
+    z-index: 1000;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 16px;
+    animation: modalFadeIn 0.2s ease-out;
+}
+
+.modal-backdrop.hidden {
+    display: none !important;
+}
+
+.modal-card {
+    background: #FFFFFF;
+    border-radius: var(--radius-lg);
+    width: 100%;
+    max-width: 430px;
+    padding: 30px 26px;
+    box-shadow: 0 25px 50px -12px rgba(15, 23, 42, 0.35);
+    position: relative;
+    border: 1px solid var(--border-color);
+    animation: modalScaleIn 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.modal-close {
+    position: absolute;
+    top: 16px;
+    right: 16px;
+    background: none;
+    border: none;
+    font-size: 24px;
+    line-height: 1;
+    color: var(--text-light);
+    cursor: pointer;
+    padding: 4px 8px;
+    border-radius: 6px;
+    transition: color 0.15s ease;
+}
+
+.modal-close:hover {
+    color: var(--text-main);
+    background: var(--bg-main);
+}
+
+.auth-header {
+    text-align: center;
+    margin-bottom: 18px;
+}
+
+.auth-logo-badge {
+    width: 46px;
+    height: 46px;
+    border-radius: 12px;
+    background: var(--primary-light);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin: 0 auto 10px auto;
+}
+
+.auth-header h2 {
+    font-size: 21px;
+    font-weight: 700;
+    color: var(--text-main);
+    margin-bottom: 4px;
+}
+
+.auth-header p {
+    font-size: 13px;
+    color: var(--text-muted);
+}
+
+/* Demo Shortcut Banner */
+.auth-demo-banner {
+    background: linear-gradient(135deg, #F0FDFA 0%, #E6FFFA 100%);
+    border: 1.5px dashed #99F6E4;
+    border-radius: 12px;
+    padding: 12px 14px;
+    margin-bottom: 14px;
+}
+
+.demo-badge-info {
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+    margin-bottom: 8px;
+}
+
+.demo-badge-info .lightning-icon {
+    font-size: 16px;
+    line-height: 1.2;
+}
+
+.demo-badge-info strong {
+    font-size: 12px;
+    color: #0F766E;
+    display: block;
+}
+
+.demo-badge-info p {
+    font-size: 11px;
+    color: #115E59;
+    margin: 0;
+    line-height: 1.3;
+}
+
+.btn-demo {
+    width: 100%;
+    background: linear-gradient(135deg, #0D9488 0%, #0F766E 100%);
+    color: #FFFFFF;
+    border: none;
+    border-radius: 8px;
+    padding: 9px 12px;
+    font-weight: 600;
+    font-size: 12.5px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    transition: all 0.2s ease;
+    box-shadow: 0 2px 8px rgba(13, 148, 136, 0.25);
+}
+
+.btn-demo:hover {
+    background: linear-gradient(135deg, #0F766E 0%, #115E59 100%);
+    box-shadow: 0 4px 12px rgba(13, 148, 136, 0.35);
+    transform: translateY(-1px);
+}
+
+.auth-divider {
+    display: flex;
+    align-items: center;
+    margin: 14px 0;
+    text-align: center;
+}
+
+.auth-divider::before,
+.auth-divider::after {
+    content: '';
+    flex: 1;
+    border-bottom: 1px solid var(--border-color);
+}
+
+.auth-divider span {
+    padding: 0 10px;
+    font-size: 10px;
+    font-weight: 700;
+    color: var(--text-light);
+    letter-spacing: 0.5px;
+}
+
+/* Tabs */
+.auth-tabs {
+    display: flex;
+    background: var(--bg-main);
+    padding: 4px;
+    border-radius: 10px;
+    gap: 4px;
+    margin-bottom: 16px;
+}
+
+.auth-tab {
+    flex: 1;
+    padding: 7px 12px;
+    background: transparent;
+    border: none;
+    border-radius: 8px;
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text-muted);
+    cursor: pointer;
+    transition: all 0.15s ease;
+}
+
+.auth-tab.active {
+    background: #FFFFFF;
+    color: var(--primary);
+    box-shadow: var(--shadow-sm);
+}
+
+/* Auth Alerts */
+.auth-alert {
+    padding: 10px 12px;
+    border-radius: 8px;
+    font-size: 12px;
+    font-weight: 500;
+    margin-bottom: 14px;
+    line-height: 1.4;
+}
+
+.auth-alert.error {
+    background: #FEF2F2;
+    color: #991B1B;
+    border: 1px solid #FCA5A5;
+}
+
+.auth-alert.success {
+    background: #ECFDF5;
+    color: #065F46;
+    border: 1px solid #6EE7B7;
+}
+
+/* Password Wrap & Toggle */
+.password-input-wrap {
+    position: relative;
+    width: 100%;
+}
+
+.password-input-wrap input {
+    padding-right: 42px !important;
+}
+
+.pwd-toggle {
+    position: absolute;
+    right: 10px;
+    top: 50%;
+    transform: translateY(-50%);
+    background: none;
+    border: none;
+    color: var(--text-light);
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 4px;
+    transition: color 0.15s ease;
+}
+
+.pwd-toggle:hover {
+    color: var(--text-main);
+}
+
+.auth-hint {
+    font-size: 11px;
+    color: var(--text-light);
+    display: block;
+    margin-top: 4px;
+    line-height: 1.3;
+}
+
+.auth-submit-btn {
+    width: 100%;
+    margin-top: 16px;
+    padding: 11px;
+    font-size: 14px;
+    font-weight: 600;
+}
+
+/* Animations */
+@keyframes modalFadeIn {
+    from { opacity: 0; }
+    to { opacity: 1; }
+}
+
+@keyframes modalScaleIn {
+    from { opacity: 0; transform: scale(0.95) translateY(10px); }
+    to { opacity: 1; transform: scale(1) translateY(0); }
+}
+
+@keyframes dropdownFadeIn {
+    from { opacity: 0; transform: translateY(-6px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+

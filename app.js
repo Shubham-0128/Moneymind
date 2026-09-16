@@ -2,9 +2,16 @@
 // MoneyMind Application Logic
 // ==========================================================================
 
-// Storage Keys
-const STORAGE_KEY = 'moneymind_data';
-const AI_CACHE_KEY = 'moneymind_ai_cache';
+// Dynamic Tenant Storage Scoping
+function getDataStorageKey() {
+    const user = window.authService?.getUser();
+    return user ? `moneymind_data_${user.id}` : 'moneymind_data_guest';
+}
+
+function getAICacheKey() {
+    const user = window.authService?.getUser();
+    return user ? `moneymind_ai_cache_${user.id}` : 'moneymind_ai_cache_guest';
+}
 
 // App State
 let appData = {
@@ -16,6 +23,7 @@ let appData = {
 let categoryChart = null;
 let trendChart = null;
 let currentTimeframeDays = 7; // Default to 7 days view
+let currentAuthTab = 'login';
 
 // DOM Elements
 const els = {
@@ -39,35 +47,350 @@ const els = {
     aiEmpty: document.getElementById('ai-empty'),
     aiError: document.getElementById('ai-error'),
     aiErrorMsg: document.getElementById('ai-error-msg'),
-    aiRefreshBtn: document.getElementById('ai-refresh-btn')
+    aiRefreshBtn: document.getElementById('ai-refresh-btn'),
+
+    // Header Profile & Dropdown Elements
+    headerProfile: document.getElementById('header-profile'),
+    profileLoggedIn: document.getElementById('profile-logged-in'),
+    profileLoggedOut: document.getElementById('profile-logged-out'),
+    profileTriggerBtn: document.getElementById('profile-trigger-btn'),
+    profileDropdown: document.getElementById('profile-dropdown'),
+    headerAvatarBadge: document.getElementById('header-avatar-badge'),
+    headerUserName: document.getElementById('header-user-name'),
+    dropdownAvatar: document.getElementById('dropdown-avatar'),
+    dropdownName: document.getElementById('dropdown-name'),
+    dropdownEmail: document.getElementById('dropdown-email'),
+    btnSwitchAccount: document.getElementById('btn-switch-account'),
+    btnLogout: document.getElementById('btn-logout'),
+    btnOpenLogin: document.getElementById('btn-open-login'),
+
+    // Auth Modal Elements
+    authModal: document.getElementById('auth-modal'),
+    authCloseBtn: document.getElementById('auth-close-btn'),
+    authForm: document.getElementById('auth-form'),
+    authModalTitle: document.getElementById('auth-modal-title'),
+    authModalSubtitle: document.getElementById('auth-modal-subtitle'),
+    authDemoBtn: document.getElementById('auth-demo-btn'),
+    tabLogin: document.getElementById('tab-login'),
+    tabRegister: document.getElementById('tab-register'),
+    groupName: document.getElementById('group-name'),
+    authName: document.getElementById('auth-name'),
+    authEmail: document.getElementById('auth-email'),
+    authPassword: document.getElementById('auth-password'),
+    authPasswordHint: document.getElementById('auth-password-hint'),
+    pwdToggle: document.getElementById('pwd-toggle'),
+    authSubmitBtn: document.getElementById('auth-submit-btn'),
+    authError: document.getElementById('auth-error')
 };
 
-// Initialize App
-function init() {
-    loadData();
-    setDefaultDate();
-    setupEventListeners();
-    updateUI();
-    fetchAISuggestions(false);
+// Seed Realistic Sample Data for Demo User (Alex Morgan)
+function seedDemoDataIfEmpty() {
+    const user = window.authService?.getUser();
+    if (!user || !user.isDemo) return;
+
+    if (appData.expenses.length === 0 && appData.goals.length === 0) {
+        const today = new Date();
+        const formatDate = (daysAgo) => {
+            const d = new Date();
+            d.setDate(today.getDate() - daysAgo);
+            return d.toISOString().split('T')[0];
+        };
+
+        appData.expenses = [
+            { id: 'exp_1', amount: 22000, category: 'Rent', date: formatDate(14), note: 'Monthly apartment rent' },
+            { id: 'exp_2', amount: 3450, category: 'Food', date: formatDate(2), note: 'Weekly organic groceries' },
+            { id: 'exp_3', amount: 1250, category: 'Food', date: formatDate(5), note: 'Dinner with colleagues' },
+            { id: 'exp_4', amount: 850, category: 'Transport', date: formatDate(1), note: 'Metro & cab passes' },
+            { id: 'exp_5', amount: 2100, category: 'Bills', date: formatDate(10), note: 'Electricity & broadband' },
+            { id: 'exp_6', amount: 4800, category: 'Shopping', date: formatDate(8), note: 'Running shoes & gear' },
+            { id: 'exp_7', amount: 650, category: 'Entertainment', date: formatDate(3), note: 'Weekend movies' }
+        ];
+
+        const targetDate = new Date();
+        targetDate.setMonth(targetDate.getMonth() + 6);
+        appData.goals = [
+            {
+                id: 'goal_demo_1',
+                name: 'Emergency Fund',
+                targetAmount: 150000,
+                savedSoFar: 65000,
+                targetDate: targetDate.toISOString().split('T')[0]
+            }
+        ];
+
+        saveData();
+    }
 }
 
-// Data Operations
+// Scoped Data Operations
 function loadData() {
-    const stored = localStorage.getItem(STORAGE_KEY);
+    const key = getDataStorageKey();
+    const stored = localStorage.getItem(key);
     if (stored) {
         try {
             appData = JSON.parse(stored);
         } catch (e) {
-            console.error("Error parsing localStorage data", e);
+            console.error("Error parsing scoped localStorage data", e);
+            appData = { expenses: [], goals: [] };
         }
+    } else {
+        appData = { expenses: [], goals: [] };
+        seedDemoDataIfEmpty();
     }
 }
 
 function saveData() {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(appData));
+    const key = getDataStorageKey();
+    localStorage.setItem(key, JSON.stringify(appData));
 }
 
-// Event Listeners
+// Extract Name Initials for Avatar
+function getInitials(name) {
+    if (!name) return 'U';
+    const parts = name.trim().split(/\s+/);
+    if (parts.length === 1) return parts[0].substring(0, 2).toUpperCase();
+    return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
+}
+
+// Reactive Auth State Handler (Observer Pattern)
+function handleAuthStateChanged(user) {
+    if (user) {
+        els.profileLoggedIn?.classList.remove('hidden');
+        els.profileLoggedOut?.classList.add('hidden');
+
+        const initials = getInitials(user.name);
+        const firstName = user.name ? user.name.split(' ')[0] : 'Account';
+
+        if (els.headerAvatarBadge) els.headerAvatarBadge.textContent = initials;
+        if (els.headerUserName) els.headerUserName.textContent = firstName;
+        if (els.dropdownAvatar) els.dropdownAvatar.textContent = initials;
+        if (els.dropdownName) els.dropdownName.textContent = user.name || 'User';
+        if (els.dropdownEmail) els.dropdownEmail.textContent = user.email || '';
+    } else {
+        els.profileLoggedIn?.classList.add('hidden');
+        els.profileLoggedOut?.classList.remove('hidden');
+    }
+
+    // Close any open dropdowns
+    if (els.profileDropdown) {
+        els.profileDropdown.classList.add('hidden');
+        els.profileTriggerBtn?.setAttribute('aria-expanded', 'false');
+    }
+
+    // Destroy chart instances so they re-render cleanly with new tenant dataset
+    if (categoryChart) {
+        categoryChart.destroy();
+        categoryChart = null;
+    }
+    if (trendChart) {
+        trendChart.destroy();
+        trendChart = null;
+    }
+
+    // Load data scoped to current user
+    loadData();
+
+    // Re-render UI
+    updateUI();
+
+    // Fetch AI suggestions for current user
+    fetchAISuggestions(false);
+}
+
+// --- Auth Modal & UI Controls ---
+function setAuthTab(tab) {
+    currentAuthTab = tab;
+    if (els.authError) {
+        els.authError.classList.add('hidden');
+        els.authError.textContent = '';
+    }
+
+    if (tab === 'login') {
+        els.tabLogin?.classList.add('active');
+        els.tabRegister?.classList.remove('active');
+        if (els.authModalTitle) els.authModalTitle.textContent = 'Welcome back';
+        if (els.authModalSubtitle) els.authModalSubtitle.textContent = 'Sign in to access your financial dashboard';
+        els.groupName?.classList.add('hidden');
+        els.authName?.removeAttribute('required');
+        if (els.authPasswordHint) els.authPasswordHint.classList.add('hidden');
+        if (els.authSubmitBtn) els.authSubmitBtn.textContent = 'Sign In';
+    } else {
+        els.tabRegister?.classList.add('active');
+        els.tabLogin?.classList.remove('active');
+        if (els.authModalTitle) els.authModalTitle.textContent = 'Create an Account';
+        if (els.authModalSubtitle) els.authModalSubtitle.textContent = 'Start tracking and optimizing your money';
+        els.groupName?.classList.remove('hidden');
+        els.authName?.setAttribute('required', 'true');
+        if (els.authPasswordHint) els.authPasswordHint.classList.remove('hidden');
+        if (els.authSubmitBtn) els.authSubmitBtn.textContent = 'Create Account';
+    }
+}
+
+function openAuthModal(tab = 'login') {
+    setAuthTab(tab);
+    if (els.authEmail) els.authEmail.value = '';
+    if (els.authPassword) els.authPassword.value = '';
+    if (els.authName) els.authName.value = '';
+    els.authModal?.classList.remove('hidden');
+    if (tab === 'register') {
+        els.authName?.focus();
+    } else {
+        els.authEmail?.focus();
+    }
+}
+
+function closeAuthModal() {
+    els.authModal?.classList.add('hidden');
+    if (els.authError) {
+        els.authError.classList.add('hidden');
+        els.authError.textContent = '';
+    }
+}
+
+// Global modal helpers
+window.setAuthTab = setAuthTab;
+window.openAuthModal = openAuthModal;
+window.closeAuthModal = closeAuthModal;
+
+function togglePasswordVisibility() {
+    if (!els.authPassword) return;
+    const isPassword = els.authPassword.type === 'password';
+    els.authPassword.type = isPassword ? 'text' : 'password';
+}
+
+function showAuthError(msg) {
+    if (!els.authError) return;
+    els.authError.className = 'auth-alert error';
+    els.authError.textContent = msg;
+    els.authError.classList.remove('hidden');
+}
+
+// Wire Auth Listeners
+function setupAuthListeners() {
+    // Dropdown toggle
+    els.profileTriggerBtn?.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const isClosed = els.profileDropdown?.classList.contains('hidden');
+        if (isClosed) {
+            els.profileDropdown?.classList.remove('hidden');
+            els.profileTriggerBtn?.setAttribute('aria-expanded', 'true');
+        } else {
+            els.profileDropdown?.classList.add('hidden');
+            els.profileTriggerBtn?.setAttribute('aria-expanded', 'false');
+        }
+    });
+
+    // Close dropdown on click outside
+    document.addEventListener('click', (e) => {
+        if (els.profileDropdown && !els.profileDropdown.classList.contains('hidden')) {
+            if (!els.profileTriggerBtn?.contains(e.target) && !els.profileDropdown.contains(e.target)) {
+                els.profileDropdown.classList.add('hidden');
+                els.profileTriggerBtn?.setAttribute('aria-expanded', 'false');
+            }
+        }
+    });
+
+    // Open login modal buttons
+    els.btnOpenLogin?.addEventListener('click', () => openAuthModal('login'));
+    els.btnSwitchAccount?.addEventListener('click', () => {
+        els.profileDropdown?.classList.add('hidden');
+        openAuthModal('login');
+    });
+
+    // Logout button
+    els.btnLogout?.addEventListener('click', () => {
+        if (confirm('Are you sure you want to sign out?')) {
+            window.authService.logout();
+        }
+    });
+
+    // Modal close handlers
+    els.authCloseBtn?.addEventListener('click', closeAuthModal);
+    els.authModal?.addEventListener('click', (e) => {
+        if (e.target === els.authModal) {
+            closeAuthModal();
+        }
+    });
+
+    // Password visibility toggle
+    els.pwdToggle?.addEventListener('click', togglePasswordVisibility);
+
+    // 1-Click Demo Login
+    els.authDemoBtn?.addEventListener('click', async () => {
+        try {
+            els.authDemoBtn.disabled = true;
+            els.authDemoBtn.textContent = 'Authenticating...';
+            await window.authService.loginDemo();
+            closeAuthModal();
+        } catch (err) {
+            showAuthError(err.message || 'Failed to authenticate with demo user.');
+        } finally {
+            els.authDemoBtn.disabled = false;
+            els.authDemoBtn.textContent = 'Quick Demo Login (Alex Morgan)';
+        }
+    });
+
+    // Auth Form Submission
+    els.authForm?.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const email = els.authEmail.value.trim();
+        const password = els.authPassword.value;
+        const name = els.authName ? els.authName.value.trim() : '';
+
+        if (els.authError) els.authError.classList.add('hidden');
+        els.authSubmitBtn.disabled = true;
+        const origBtnText = els.authSubmitBtn.textContent;
+        els.authSubmitBtn.textContent = currentAuthTab === 'login' ? 'Signing in...' : 'Creating account...';
+
+        try {
+            if (currentAuthTab === 'login') {
+                await window.authService.login(email, password);
+            } else {
+                await window.authService.register(name, email, password);
+            }
+            closeAuthModal();
+        } catch (err) {
+            showAuthError(err.message || 'Authentication error.');
+        } finally {
+            els.authSubmitBtn.disabled = false;
+            els.authSubmitBtn.textContent = origBtnText;
+        }
+    });
+}
+
+// App Initialization
+async function init() {
+    setDefaultDate();
+    setupEventListeners();
+    setupAuthListeners();
+
+    // Subscribe to Auth state changes
+    if (window.authService) {
+        window.authService.onAuthStateChanged((user) => {
+            handleAuthStateChanged(user);
+        });
+
+        // Initialize active session
+        await window.authService.init();
+
+        // If no user is logged in on initial visit, default to demo account for instant interviewer evaluation
+        if (!window.authService.isAuthenticated()) {
+            const hasVisited = localStorage.getItem('moneymind_visited');
+            if (!hasVisited) {
+                localStorage.setItem('moneymind_visited', 'true');
+                await window.authService.loginDemo();
+            } else {
+                loadData();
+                updateUI();
+            }
+        }
+    } else {
+        loadData();
+        updateUI();
+    }
+}
+
+// Event Listeners for Financial Tracker
 function setupEventListeners() {
     els.expenseForm.addEventListener('submit', handleAddExpense);
     els.goalForm.addEventListener('submit', handleAddGoal);
@@ -701,7 +1024,8 @@ async function fetchAISuggestions(forceRefresh = false) {
 
     // 2. Check Cache (if not force refresh)
     if (!forceRefresh) {
-        const cachedRaw = localStorage.getItem(AI_CACHE_KEY);
+        const cacheKey = getAICacheKey();
+        const cachedRaw = localStorage.getItem(cacheKey);
         if (cachedRaw) {
             try {
                 const cached = JSON.parse(cachedRaw);
@@ -748,8 +1072,9 @@ async function fetchAISuggestions(forceRefresh = false) {
             throw new Error("Invalid response format from /api/suggestions");
         }
 
-        // Cache the successful result
-        localStorage.setItem(AI_CACHE_KEY, JSON.stringify({
+        // Cache the successful result scoped to user
+        const cacheKey = getAICacheKey();
+        localStorage.setItem(cacheKey, JSON.stringify({
             timestamp: Date.now(),
             expenseSignature: currentSignature,
             suggestions
