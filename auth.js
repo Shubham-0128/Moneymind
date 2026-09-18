@@ -226,23 +226,84 @@ class WebCryptoAuthProvider {
     }
 }
 
-// Blueprint demonstrating future production backend integration
-// (Mention this in the interview to show architectural scalability)
+// Production REST API Auth Provider
 class RestApiAuthProvider {
-    async register(data) {
-        // In production: const res = await fetch('/api/auth/register', { method: 'POST', body: JSON.stringify(data) });
-        throw new Error('Production endpoint not active. Using WebCryptoAuthProvider.');
+    constructor(apiBaseUrl = '') {
+        this.apiBaseUrl = apiBaseUrl || (window.location.port === '8000' ? '' : 'http://127.0.0.1:8000');
+        this.fallbackProvider = new WebCryptoAuthProvider();
     }
-    async login(data) {
-        // In production: const res = await fetch('/api/auth/login', { method: 'POST', body: JSON.stringify(data) });
-        throw new Error('Production endpoint not active. Using WebCryptoAuthProvider.');
+
+    async register({ name, email, password }) {
+        try {
+            const res = await fetch(`${this.apiBaseUrl}/api/auth/register`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ name, email, password })
+            });
+            const data = await res.json();
+            if (!res.ok) {
+                throw new Error(data.detail || 'Registration failed.');
+            }
+            return this.login({ email, password });
+        } catch (err) {
+            if (err.name === 'TypeError' && err.message.toLowerCase().includes('fetch')) {
+                console.warn('Backend REST API unreachable. Falling back to local WebCrypto store.');
+                return this.fallbackProvider.register({ name, email, password });
+            }
+            throw err;
+        }
     }
+
+    async login({ email, password }) {
+        try {
+            const res = await fetch(`${this.apiBaseUrl}/api/auth/login`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ email, password })
+            });
+            const data = await res.json();
+            if (!res.ok) {
+                throw new Error(data.detail || 'Invalid email or password.');
+            }
+
+            const session = {
+                token: data.token,
+                userId: data.user.id,
+                userEmail: data.user.email,
+                createdAt: Date.now(),
+                expiresAt: Date.now() + SESSION_TTL_MS
+            };
+            localStorage.setItem(SESSION_STORAGE_KEY, JSON.stringify(session));
+            return { user: data.user, session };
+        } catch (err) {
+            if (err.name === 'TypeError' && err.message.toLowerCase().includes('fetch')) {
+                console.warn('Backend REST API unreachable. Falling back to local WebCrypto store.');
+                return this.fallbackProvider.login({ email, password });
+            }
+            throw err;
+        }
+    }
+
     async verifySession(token) {
-        // In production: const res = await fetch('/api/auth/me', { headers: { Authorization: `Bearer ${token}` } });
-        return null;
+        if (!token) return null;
+        try {
+            const res = await fetch(`${this.apiBaseUrl}/api/auth/me`, {
+                headers: { 'Authorization': `Bearer ${token}` }
+            });
+            if (!res.ok) {
+                return this.fallbackProvider.verifySession(token);
+            }
+            const user = await res.json();
+            const rawSession = localStorage.getItem(SESSION_STORAGE_KEY);
+            const session = rawSession ? JSON.parse(rawSession) : { token };
+            return { user, session };
+        } catch (err) {
+            return this.fallbackProvider.verifySession(token);
+        }
     }
+
     logout() {
-        // In production: fetch('/api/auth/logout', { method: 'POST' });
+        localStorage.removeItem(SESSION_STORAGE_KEY);
     }
 }
 
@@ -349,4 +410,4 @@ window.CryptoUtils = CryptoUtils;
 window.WebCryptoAuthProvider = WebCryptoAuthProvider;
 window.RestApiAuthProvider = RestApiAuthProvider;
 window.AuthService = AuthService;
-window.authService = new AuthService();
+window.authService = new AuthService(new RestApiAuthProvider());

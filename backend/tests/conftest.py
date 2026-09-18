@@ -7,6 +7,8 @@ from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
 from backend.database import Base, get_db
+from backend.models import User
+from backend.security import hash_password, create_access_token
 from backend.main import app
 
 # In-memory SQLite engine for tests
@@ -45,3 +47,24 @@ def client(db_session):
     with TestClient(app) as test_client:
         yield test_client
     app.dependency_overrides.clear()
+
+@pytest.fixture
+def auth_user(db_session):
+    user = User(
+        id="usr_test_123",
+        email="testuser@moneymind.app",
+        name="Test User",
+        password_hash=hash_password("Password123!")
+    )
+    db_session.add(user)
+    db_session.commit()
+    db_session.refresh(user)
+    return user
+
+@pytest.fixture
+def auth_token(auth_user):
+    return create_access_token(auth_user.id, auth_user.email)
+
+@pytest.fixture
+def auth_headers(auth_token):
+    return {"Authorization": f"Bearer {auth_token}"}

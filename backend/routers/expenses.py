@@ -2,10 +2,10 @@ from datetime import date
 from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
-from sqlalchemy import func
 from backend.database import get_db
-from backend.models import Expense
+from backend.models import Expense, User
 from backend.schemas import ExpenseCreate, ExpenseUpdate, ExpenseOut, ExpenseSummary, CategoryTotal
+from backend.security import get_current_user
 
 router = APIRouter(prefix="/api/expenses", tags=["Expenses"])
 
@@ -14,12 +14,10 @@ def list_expenses(
     category: Optional[str] = None,
     start_date: Optional[date] = None,
     end_date: Optional[date] = None,
-    user_id: Optional[str] = None,
+    current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
-    query = db.query(Expense)
-    if user_id:
-        query = query.filter(Expense.user_id == user_id)
+    query = db.query(Expense).filter(Expense.user_id == current_user.id)
     if category:
         query = query.filter(Expense.category == category.capitalize())
     if start_date:
@@ -30,10 +28,14 @@ def list_expenses(
     return query.order_by(Expense.date.desc(), Expense.created_at.desc()).all()
 
 @router.post("", response_model=ExpenseOut, status_code=status.HTTP_201_CREATED)
-def create_expense(payload: ExpenseCreate, db: Session = Depends(get_db)):
+def create_expense(
+    payload: ExpenseCreate,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
     expense = Expense(
         id=payload.id if payload.id else None,
-        user_id=payload.user_id,
+        user_id=current_user.id,
         amount=payload.amount,
         category=payload.category,
         date=payload.date,
@@ -46,17 +48,12 @@ def create_expense(payload: ExpenseCreate, db: Session = Depends(get_db)):
 
 @router.get("/summary", response_model=ExpenseSummary)
 def get_expense_summary(
-    user_id: Optional[str] = None,
     month: Optional[int] = Query(None, ge=1, le=12),
     year: Optional[int] = Query(None, ge=2000, le=2100),
+    current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
-    query = db.query(Expense)
-    if user_id:
-        query = query.filter(Expense.user_id == user_id)
-    
-    # Optional month/year filtering
-    all_expenses = query.all()
+    all_expenses = db.query(Expense).filter(Expense.user_id == current_user.id).all()
     if month and year:
         expenses = [e for e in all_expenses if e.date.month == month and e.date.year == year]
     else:
@@ -84,8 +81,15 @@ def get_expense_summary(
     )
 
 @router.get("/{expense_id}", response_model=ExpenseOut)
-def get_expense(expense_id: str, db: Session = Depends(get_db)):
-    expense = db.query(Expense).filter(Expense.id == expense_id).first()
+def get_expense(
+    expense_id: str,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    expense = db.query(Expense).filter(
+        Expense.id == expense_id,
+        Expense.user_id == current_user.id
+    ).first()
     if not expense:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -94,8 +98,16 @@ def get_expense(expense_id: str, db: Session = Depends(get_db)):
     return expense
 
 @router.put("/{expense_id}", response_model=ExpenseOut)
-def update_expense(expense_id: str, payload: ExpenseUpdate, db: Session = Depends(get_db)):
-    expense = db.query(Expense).filter(Expense.id == expense_id).first()
+def update_expense(
+    expense_id: str,
+    payload: ExpenseUpdate,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    expense = db.query(Expense).filter(
+        Expense.id == expense_id,
+        Expense.user_id == current_user.id
+    ).first()
     if not expense:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -116,8 +128,15 @@ def update_expense(expense_id: str, payload: ExpenseUpdate, db: Session = Depend
     return expense
 
 @router.delete("/{expense_id}", status_code=status.HTTP_200_OK)
-def delete_expense(expense_id: str, db: Session = Depends(get_db)):
-    expense = db.query(Expense).filter(Expense.id == expense_id).first()
+def delete_expense(
+    expense_id: str,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    expense = db.query(Expense).filter(
+        Expense.id == expense_id,
+        Expense.user_id == current_user.id
+    ).first()
     if not expense:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,

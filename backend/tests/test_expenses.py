@@ -1,11 +1,16 @@
-def test_create_expense_valid(client):
+def test_unauthorized_expense_access(client):
+    res = client.get("/api/expenses")
+    assert res.status_code == 401
+    assert "token required" in res.json()["detail"].lower()
+
+def test_create_expense_valid(client, auth_headers):
     payload = {
         "amount": 2500.50,
         "category": "Food",
         "date": "2026-03-15",
         "note": "Dinner with team"
     }
-    response = client.post("/api/expenses", json=payload)
+    response = client.post("/api/expenses", json=payload, headers=auth_headers)
     assert response.status_code == 201
     data = response.json()
     assert data["amount"] == 2500.50
@@ -14,94 +19,93 @@ def test_create_expense_valid(client):
     assert data["note"] == "Dinner with team"
     assert "id" in data
 
-def test_create_expense_invalid_amount(client):
+def test_create_expense_invalid_amount(client, auth_headers):
     payload = {
         "amount": -50.0,
         "category": "Food",
         "date": "2026-03-15"
     }
-    response = client.post("/api/expenses", json=payload)
+    response = client.post("/api/expenses", json=payload, headers=auth_headers)
     assert response.status_code == 422
     assert response.json()["error"] is True
 
-def test_create_expense_invalid_date(client):
+def test_create_expense_invalid_date(client, auth_headers):
     payload = {
         "amount": 100.0,
         "category": "Food",
         "date": "not-a-valid-date"
     }
-    response = client.post("/api/expenses", json=payload)
+    response = client.post("/api/expenses", json=payload, headers=auth_headers)
     assert response.status_code == 422
 
-def test_list_and_filter_expenses(client):
-    client.post("/api/expenses", json={"amount": 100, "category": "Food", "date": "2026-03-10"})
-    client.post("/api/expenses", json={"amount": 500, "category": "Rent", "date": "2026-03-01"})
-    client.post("/api/expenses", json={"amount": 200, "category": "Food", "date": "2026-03-12"})
+def test_list_and_filter_expenses(client, auth_headers):
+    client.post("/api/expenses", json={"amount": 100, "category": "Food", "date": "2026-03-10"}, headers=auth_headers)
+    client.post("/api/expenses", json={"amount": 500, "category": "Rent", "date": "2026-03-01"}, headers=auth_headers)
+    client.post("/api/expenses", json={"amount": 200, "category": "Food", "date": "2026-03-12"}, headers=auth_headers)
 
     # All expenses
-    res = client.get("/api/expenses")
+    res = client.get("/api/expenses", headers=auth_headers)
     assert res.status_code == 200
     assert len(res.json()) == 3
 
     # Filter category
-    res_filtered = client.get("/api/expenses?category=Food")
+    res_filtered = client.get("/api/expenses?category=Food", headers=auth_headers)
     assert res_filtered.status_code == 200
     assert len(res_filtered.json()) == 2
     assert all(e["category"] == "Food" for e in res_filtered.json())
 
     # Filter date range
-    res_date = client.get("/api/expenses?start_date=2026-03-11&end_date=2026-03-15")
+    res_date = client.get("/api/expenses?start_date=2026-03-11&end_date=2026-03-15", headers=auth_headers)
     assert res_date.status_code == 200
     assert len(res_date.json()) == 1
     assert res_date.json()[0]["amount"] == 200
 
-def test_get_expense_by_id(client):
-    created = client.post("/api/expenses", json={"amount": 150, "category": "Bills", "date": "2026-03-10"}).json()
+def test_get_expense_by_id(client, auth_headers):
+    created = client.post("/api/expenses", json={"amount": 150, "category": "Bills", "date": "2026-03-10"}, headers=auth_headers).json()
     exp_id = created["id"]
 
-    res = client.get(f"/api/expenses/{exp_id}")
+    res = client.get(f"/api/expenses/{exp_id}", headers=auth_headers)
     assert res.status_code == 200
     assert res.json()["id"] == exp_id
 
     # Non-existent
-    res_404 = client.get("/api/expenses/non_existent_id")
+    res_404 = client.get("/api/expenses/non_existent_id", headers=auth_headers)
     assert res_404.status_code == 404
     assert res_404.json()["error"] is True
 
-def test_update_expense(client):
-    created = client.post("/api/expenses", json={"amount": 300, "category": "Shopping", "date": "2026-03-10"}).json()
+def test_update_expense(client, auth_headers):
+    created = client.post("/api/expenses", json={"amount": 300, "category": "Shopping", "date": "2026-03-10"}, headers=auth_headers).json()
     exp_id = created["id"]
 
-    update_res = client.put(f"/api/expenses/{exp_id}", json={"amount": 450, "note": "Updated note"})
+    update_res = client.put(f"/api/expenses/{exp_id}", json={"amount": 450, "note": "Updated note"}, headers=auth_headers)
     assert update_res.status_code == 200
     updated = update_res.json()
     assert updated["amount"] == 450
     assert updated["note"] == "Updated note"
     assert updated["category"] == "Shopping"
 
-def test_delete_expense(client):
-    created = client.post("/api/expenses", json={"amount": 300, "category": "Shopping", "date": "2026-03-10"}).json()
+def test_delete_expense(client, auth_headers):
+    created = client.post("/api/expenses", json={"amount": 300, "category": "Shopping", "date": "2026-03-10"}, headers=auth_headers).json()
     exp_id = created["id"]
 
-    del_res = client.delete(f"/api/expenses/{exp_id}")
+    del_res = client.delete(f"/api/expenses/{exp_id}", headers=auth_headers)
     assert del_res.status_code == 200
 
     # Verify deleted
-    get_res = client.get(f"/api/expenses/{exp_id}")
+    get_res = client.get(f"/api/expenses/{exp_id}", headers=auth_headers)
     assert get_res.status_code == 404
 
-def test_expense_summary(client):
-    client.post("/api/expenses", json={"amount": 1000, "category": "Rent", "date": "2026-03-01"})
-    client.post("/api/expenses", json={"amount": 250, "category": "Food", "date": "2026-03-05"})
-    client.post("/api/expenses", json={"amount": 150, "category": "Food", "date": "2026-03-08"})
+def test_expense_summary(client, auth_headers):
+    client.post("/api/expenses", json={"amount": 1000, "category": "Rent", "date": "2026-03-01"}, headers=auth_headers)
+    client.post("/api/expenses", json={"amount": 250, "category": "Food", "date": "2026-03-05"}, headers=auth_headers)
+    client.post("/api/expenses", json={"amount": 150, "category": "Food", "date": "2026-03-08"}, headers=auth_headers)
 
-    res = client.get("/api/expenses/summary")
+    res = client.get("/api/expenses/summary", headers=auth_headers)
     assert res.status_code == 200
     data = res.json()
     assert data["total_amount"] == 1400.0
     assert data["total_count"] == 3
     assert len(data["by_category"]) == 2
-    # Rent is highest total (1000)
     assert data["by_category"][0]["category"] == "Rent"
     assert data["by_category"][0]["total"] == 1000.0
     assert data["by_category"][1]["category"] == "Food"

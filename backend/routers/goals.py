@@ -2,8 +2,9 @@ from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 from backend.database import get_db
-from backend.models import Goal
+from backend.models import Goal, User
 from backend.schemas import GoalCreate, GoalUpdate, GoalAddSavings, GoalOut
+from backend.security import get_current_user
 
 router = APIRouter(prefix="/api/goals", tags=["Savings Goals"])
 
@@ -23,18 +24,22 @@ def format_goal_out(goal: Goal) -> GoalOut:
     )
 
 @router.get("", response_model=List[GoalOut])
-def list_goals(user_id: Optional[str] = None, db: Session = Depends(get_db)):
-    query = db.query(Goal)
-    if user_id:
-        query = query.filter(Goal.user_id == user_id)
-    goals = query.order_by(Goal.created_at.asc()).all()
+def list_goals(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    goals = db.query(Goal).filter(Goal.user_id == current_user.id).order_by(Goal.created_at.asc()).all()
     return [format_goal_out(g) for g in goals]
 
 @router.post("", response_model=GoalOut, status_code=status.HTTP_201_CREATED)
-def create_goal(payload: GoalCreate, db: Session = Depends(get_db)):
+def create_goal(
+    payload: GoalCreate,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
     goal = Goal(
         id=payload.id if payload.id else None,
-        user_id=payload.user_id,
+        user_id=current_user.id,
         name=payload.name.strip(),
         target_amount=payload.target_amount,
         saved_so_far=payload.saved_so_far,
@@ -46,8 +51,15 @@ def create_goal(payload: GoalCreate, db: Session = Depends(get_db)):
     return format_goal_out(goal)
 
 @router.get("/{goal_id}", response_model=GoalOut)
-def get_goal(goal_id: str, db: Session = Depends(get_db)):
-    goal = db.query(Goal).filter(Goal.id == goal_id).first()
+def get_goal(
+    goal_id: str,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    goal = db.query(Goal).filter(
+        Goal.id == goal_id,
+        Goal.user_id == current_user.id
+    ).first()
     if not goal:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -56,8 +68,16 @@ def get_goal(goal_id: str, db: Session = Depends(get_db)):
     return format_goal_out(goal)
 
 @router.put("/{goal_id}", response_model=GoalOut)
-def update_goal(goal_id: str, payload: GoalUpdate, db: Session = Depends(get_db)):
-    goal = db.query(Goal).filter(Goal.id == goal_id).first()
+def update_goal(
+    goal_id: str,
+    payload: GoalUpdate,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    goal = db.query(Goal).filter(
+        Goal.id == goal_id,
+        Goal.user_id == current_user.id
+    ).first()
     if not goal:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -78,8 +98,16 @@ def update_goal(goal_id: str, payload: GoalUpdate, db: Session = Depends(get_db)
     return format_goal_out(goal)
 
 @router.patch("/{goal_id}/savings", response_model=GoalOut)
-def add_savings(goal_id: str, payload: GoalAddSavings, db: Session = Depends(get_db)):
-    goal = db.query(Goal).filter(Goal.id == goal_id).first()
+def add_savings(
+    goal_id: str,
+    payload: GoalAddSavings,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    goal = db.query(Goal).filter(
+        Goal.id == goal_id,
+        Goal.user_id == current_user.id
+    ).first()
     if not goal:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -92,8 +120,15 @@ def add_savings(goal_id: str, payload: GoalAddSavings, db: Session = Depends(get
     return format_goal_out(goal)
 
 @router.delete("/{goal_id}", status_code=status.HTTP_200_OK)
-def delete_goal(goal_id: str, db: Session = Depends(get_db)):
-    goal = db.query(Goal).filter(Goal.id == goal_id).first()
+def delete_goal(
+    goal_id: str,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    goal = db.query(Goal).filter(
+        Goal.id == goal_id,
+        Goal.user_id == current_user.id
+    ).first()
     if not goal:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,

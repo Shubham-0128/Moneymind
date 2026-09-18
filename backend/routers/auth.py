@@ -1,10 +1,9 @@
-import secrets
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 from backend.database import get_db
 from backend.models import User
 from backend.schemas import UserCreate, UserLogin, UserOut
-from backend.security import hash_password, verify_password
+from backend.security import hash_password, verify_password, create_access_token, get_current_user
 
 router = APIRouter(prefix="/api/auth", tags=["Authentication"])
 
@@ -38,11 +37,15 @@ def login(payload: UserLogin, db: Session = Depends(get_db)):
             detail="Invalid email or password."
         )
 
-    token = secrets.token_hex(32)
+    token = create_access_token(user.id, user.email)
     return {
         "user": UserOut.model_validate(user),
         "token": token
     }
+
+@router.get("/me", response_model=UserOut)
+def get_current_user_profile(current_user: User = Depends(get_current_user)):
+    return current_user
 
 @router.get("/users/{user_id}", response_model=UserOut)
 def get_user(user_id: str, db: Session = Depends(get_db)):

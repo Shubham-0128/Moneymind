@@ -2,6 +2,135 @@
 // MoneyMind Application Logic
 // ==========================================================================
 
+const API_BASE_URL = window.location.port === '8000' ? '' : 'http://127.0.0.1:8000';
+
+function showToast(message, type = 'info') {
+    let container = document.getElementById('toast-container');
+    if (!container) {
+        container = document.createElement('div');
+        container.id = 'toast-container';
+        container.className = 'toast-container';
+        document.body.appendChild(container);
+    }
+    const toast = document.createElement('div');
+    toast.className = `toast toast-${type}`;
+    toast.textContent = message;
+    container.appendChild(toast);
+    setTimeout(() => {
+        toast.style.opacity = '0';
+        setTimeout(() => toast.remove(), 250);
+    }, 3500);
+}
+
+const apiClient = {
+    getHeaders() {
+        const session = window.authService?.currentSession;
+        const headers = { 'Content-Type': 'application/json' };
+        if (session?.token) {
+            headers['Authorization'] = `Bearer ${session.token}`;
+        }
+        return headers;
+    },
+
+    async isServerOnline() {
+        try {
+            const res = await fetch(`${API_BASE_URL}/api/health`, { signal: AbortSignal.timeout(1500) });
+            return res.ok;
+        } catch {
+            return false;
+        }
+    },
+
+    async getExpenses() {
+        const res = await fetch(`${API_BASE_URL}/api/expenses`, { headers: this.getHeaders() });
+        if (!res.ok) throw new Error((await res.json())?.detail || 'Failed to fetch expenses');
+        return res.json();
+    },
+
+    async createExpense(expense) {
+        const res = await fetch(`${API_BASE_URL}/api/expenses`, {
+            method: 'POST',
+            headers: this.getHeaders(),
+            body: JSON.stringify(expense)
+        });
+        if (!res.ok) throw new Error((await res.json())?.detail || 'Failed to create expense');
+        return res.json();
+    },
+
+    async deleteExpense(id) {
+        const res = await fetch(`${API_BASE_URL}/api/expenses/${id}`, {
+            method: 'DELETE',
+            headers: this.getHeaders()
+        });
+        if (!res.ok) throw new Error((await res.json())?.detail || 'Failed to delete expense');
+        return res.json();
+    },
+
+    async getGoals() {
+        const res = await fetch(`${API_BASE_URL}/api/goals`, { headers: this.getHeaders() });
+        if (!res.ok) throw new Error((await res.json())?.detail || 'Failed to fetch goals');
+        const data = await res.json();
+        return data.map(g => ({
+            id: g.id,
+            name: g.name,
+            targetAmount: g.target_amount,
+            savedSoFar: g.saved_so_far,
+            targetDate: g.target_date,
+            progressPercentage: g.progress_percentage
+        }));
+    },
+
+    async createGoal(goal) {
+        const res = await fetch(`${API_BASE_URL}/api/goals`, {
+            method: 'POST',
+            headers: this.getHeaders(),
+            body: JSON.stringify({
+                name: goal.name,
+                target_amount: goal.targetAmount,
+                saved_so_far: goal.savedSoFar || 0,
+                target_date: goal.targetDate
+            })
+        });
+        if (!res.ok) throw new Error((await res.json())?.detail || 'Failed to create goal');
+        const g = await res.json();
+        return {
+            id: g.id,
+            name: g.name,
+            targetAmount: g.target_amount,
+            savedSoFar: g.saved_so_far,
+            targetDate: g.target_date,
+            progressPercentage: g.progress_percentage
+        };
+    },
+
+    async addSavings(id, amount) {
+        const res = await fetch(`${API_BASE_URL}/api/goals/${id}/savings`, {
+            method: 'PATCH',
+            headers: this.getHeaders(),
+            body: JSON.stringify({ amount })
+        });
+        if (!res.ok) throw new Error((await res.json())?.detail || 'Failed to add savings');
+        const g = await res.json();
+        return {
+            id: g.id,
+            name: g.name,
+            targetAmount: g.target_amount,
+            savedSoFar: g.saved_so_far,
+            targetDate: g.target_date,
+            progressPercentage: g.progress_percentage
+        };
+    },
+
+    async deleteGoal(id) {
+        const res = await fetch(`${API_BASE_URL}/api/goals/${id}`, {
+            method: 'DELETE',
+            headers: this.getHeaders()
+        });
+        if (!res.ok) throw new Error((await res.json())?.detail || 'Failed to delete goal');
+        return res.json();
+    }
+};
+
 // Dynamic Tenant Storage Scoping
 function getDataStorageKey() {
     const user = window.authService?.getUser();
@@ -123,7 +252,25 @@ function seedDemoDataIfEmpty() {
 }
 
 // Scoped Data Operations
-function loadData() {
+async function loadData() {
+    const user = window.authService?.getUser();
+    const token = window.authService?.currentSession?.token;
+    if (user && token) {
+        try {
+            const [expenses, goals] = await Promise.all([
+                apiClient.getExpenses(),
+                apiClient.getGoals()
+            ]);
+            appData.expenses = expenses;
+            appData.goals = goals;
+            saveData();
+            updateUI();
+            return;
+        } catch (e) {
+            console.warn("Backend REST API offline or unreachable, using local storage cache:", e);
+        }
+    }
+
     const key = getDataStorageKey();
     const stored = localStorage.getItem(key);
     if (stored) {
@@ -137,6 +284,7 @@ function loadData() {
         appData = { expenses: [], goals: [] };
         seedDemoDataIfEmpty();
     }
+    updateUI();
 }
 
 function saveData() {
@@ -153,7 +301,7 @@ function getInitials(name) {
 }
 
 // Reactive Auth State Handler (Observer Pattern)
-function handleAuthStateChanged(user) {
+async function handleAuthStateChanged(user) {
     if (user) {
         els.profileLoggedIn?.classList.remove('hidden');
         els.profileLoggedOut?.classList.add('hidden');
@@ -188,7 +336,7 @@ function handleAuthStateChanged(user) {
     }
 
     // Load data scoped to current user
-    loadData();
+    await loadData();
 
     // Re-render UI
     updateUI();
@@ -420,7 +568,7 @@ function updateUI() {
 }
 
 // --- Expenses ---
-function handleAddExpense(e) {
+async function handleAddExpense(e) {
     e.preventDefault();
     
     const amount = parseFloat(document.getElementById('exp-amount').value);
@@ -430,16 +578,26 @@ function handleAddExpense(e) {
     
     if (isNaN(amount) || amount <= 0 || !category || !date) return;
     
-    const expense = {
-        id: Date.now().toString(),
-        amount,
-        category,
-        date,
-        note
-    };
+    const expenseData = { amount, category, date, note };
     
-    appData.expenses.push(expense);
-    saveData();
+    if (window.authService?.isAuthenticated() && window.authService?.currentSession?.token) {
+        try {
+            const saved = await apiClient.createExpense(expenseData);
+            appData.expenses.unshift(saved);
+            saveData();
+            showToast("Transaction saved to database", "success");
+        } catch (err) {
+            console.warn("API save failed, falling back to local:", err);
+            expenseData.id = Date.now().toString();
+            appData.expenses.unshift(expenseData);
+            saveData();
+            showToast("Saved to local storage", "info");
+        }
+    } else {
+        expenseData.id = Date.now().toString();
+        appData.expenses.unshift(expenseData);
+        saveData();
+    }
     
     // Reset form except date
     els.expenseForm.reset();
@@ -449,9 +607,17 @@ function handleAddExpense(e) {
     fetchAISuggestions(false);
 }
 
-function deleteExpense(id) {
+async function deleteExpense(id) {
     if (!confirm("Are you sure you want to delete this expense?")) {
         return;
+    }
+    if (window.authService?.isAuthenticated() && window.authService?.currentSession?.token) {
+        try {
+            await apiClient.deleteExpense(id);
+            showToast("Transaction deleted from database", "info");
+        } catch (err) {
+            console.warn("API delete error:", err);
+        }
     }
     appData.expenses = appData.expenses.filter(e => e.id !== id);
     saveData();
@@ -514,7 +680,7 @@ function renderMonthTotal() {
 }
 
 // --- Goals ---
-function handleAddGoal(e) {
+async function handleAddGoal(e) {
     e.preventDefault();
     
     const name = document.getElementById('goal-name').value;
@@ -523,37 +689,72 @@ function handleAddGoal(e) {
     
     if (!name || isNaN(targetAmount) || targetAmount <= 0 || !targetDate) return;
     
-    const goal = {
-        id: Date.now().toString(),
-        name,
-        targetAmount,
-        targetDate,
-        savedSoFar: 0
-    };
+    const goalData = { name, targetAmount, targetDate, savedSoFar: 0 };
     
-    appData.goals.push(goal);
-    saveData();
+    if (window.authService?.isAuthenticated() && window.authService?.currentSession?.token) {
+        try {
+            const saved = await apiClient.createGoal(goalData);
+            appData.goals.push(saved);
+            saveData();
+            showToast("Savings goal saved to database", "success");
+        } catch (err) {
+            console.warn("API create goal failed, saving locally:", err);
+            goalData.id = Date.now().toString();
+            appData.goals.push(goalData);
+            saveData();
+            showToast("Saved goal to local storage", "info");
+        }
+    } else {
+        goalData.id = Date.now().toString();
+        appData.goals.push(goalData);
+        saveData();
+    }
+    
     els.goalForm.reset();
     updateUI();
 }
 
-function deleteGoal(id) {
+async function deleteGoal(id) {
     if (!confirm("Are you sure you want to delete this savings goal?")) {
         return;
+    }
+    if (window.authService?.isAuthenticated() && window.authService?.currentSession?.token) {
+        try {
+            await apiClient.deleteGoal(id);
+            showToast("Savings goal deleted from database", "info");
+        } catch (err) {
+            console.warn("API delete goal error:", err);
+        }
     }
     appData.goals = appData.goals.filter(g => g.id !== id);
     saveData();
     updateUI();
 }
 
-function updateGoalSavings(id, amountToAdd) {
+async function updateGoalSavings(id, amountToAdd) {
     const goal = appData.goals.find(g => g.id === id);
-    if (goal) {
-        goal.savedSoFar += parseFloat(amountToAdd) || 0;
-        if (goal.savedSoFar > goal.targetAmount) goal.savedSoFar = goal.targetAmount;
-        saveData();
-        updateUI();
+    if (!goal) return;
+    
+    const increment = parseFloat(amountToAdd) || 0;
+    if (increment <= 0) return;
+
+    if (window.authService?.isAuthenticated() && window.authService?.currentSession?.token) {
+        try {
+            const updated = await apiClient.addSavings(id, increment);
+            goal.savedSoFar = updated.savedSoFar;
+            saveData();
+            updateUI();
+            showToast(`Added ₹${increment.toLocaleString()} to ${goal.name}!`, "success");
+            return;
+        } catch (err) {
+            console.warn("API update savings error:", err);
+        }
     }
+
+    goal.savedSoFar += increment;
+    if (goal.savedSoFar > goal.targetAmount) goal.savedSoFar = goal.targetAmount;
+    saveData();
+    updateUI();
 }
 
 function renderGoals() {
@@ -1052,7 +1253,7 @@ async function fetchAISuggestions(forceRefresh = false) {
     const summary = buildSpendingSummary();
 
     try {
-        const response = await fetch("/api/suggestions", {
+        const response = await fetch(`${API_BASE_URL}/api/suggestions`, {
             method: "POST",
             headers: {
                 "Content-Type": "application/json"

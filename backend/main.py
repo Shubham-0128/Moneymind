@@ -1,8 +1,9 @@
+import os
 import logging
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, Request, status
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, FileResponse
 from fastapi.exceptions import RequestValidationError
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
@@ -10,11 +11,13 @@ from backend.config import settings
 from backend.database import init_db, SessionLocal, engine
 from backend.models import User
 from backend.security import hash_password
-from backend.routers import auth, expenses, goals
+from backend.routers import auth, expenses, goals, ai
 
 # Setup logging
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 logger = logging.getLogger("moneymind")
+
+ROOT_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 
 def seed_demo_user():
     db = SessionLocal()
@@ -109,6 +112,7 @@ async def unhandled_exception_handler(request: Request, exc: Exception):
 app.include_router(auth.router)
 app.include_router(expenses.router)
 app.include_router(goals.router)
+app.include_router(ai.router)
 
 @app.get("/api/health", tags=["Health"])
 def health_check():
@@ -118,3 +122,21 @@ def health_check():
         "app": settings.APP_NAME,
         "database_dialect": db_dialect
     }
+
+# Serve root index.html and frontend static assets if requested
+@app.get("/", include_in_schema=False)
+async def serve_index():
+    index_file = os.path.join(ROOT_DIR, "index.html")
+    if os.path.exists(index_file):
+        return FileResponse(index_file)
+    return {"message": "MoneyMind API is running. Go to /docs for Swagger UI."}
+
+@app.get("/{file_path:path}", include_in_schema=False)
+async def serve_static_asset(file_path: str):
+    # Do not intercept /api or docs
+    if file_path.startswith("api") or file_path.startswith("docs") or file_path.startswith("openapi.json"):
+        return JSONResponse(status_code=404, content={"detail": "Not Found"})
+    safe_file = os.path.join(ROOT_DIR, file_path)
+    if os.path.isfile(safe_file) and not file_path.startswith("backend") and not file_path.startswith("."):
+        return FileResponse(safe_file)
+    return JSONResponse(status_code=404, content={"detail": "Not Found"})
