@@ -4,3 +4,11 @@
 node_modules/
 .DS_Store
 INTERVIEW_GUIDE.md
+
+# Python
+.venv/
+__pycache__/
+*.pyc
+*.db
+.pytest_cache/
+
