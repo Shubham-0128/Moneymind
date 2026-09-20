@@ -12,12 +12,15 @@ router = APIRouter(prefix="/api/expenses", tags=["Expenses"])
 @router.get("", response_model=List[ExpenseOut])
 def list_expenses(
     category: Optional[str] = None,
+    type: Optional[str] = None,
     start_date: Optional[date] = None,
     end_date: Optional[date] = None,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
     query = db.query(Expense).filter(Expense.user_id == current_user.id)
+    if type:
+        query = query.filter(Expense.type == type.lower())
     if category:
         query = query.filter(Expense.category == category.capitalize())
     if start_date:
@@ -36,6 +39,7 @@ def create_expense(
     expense = Expense(
         id=payload.id if payload.id else None,
         user_id=current_user.id,
+        type=payload.type,
         amount=payload.amount,
         category=payload.category,
         date=payload.date,
@@ -60,6 +64,10 @@ def get_expense_summary(
         expenses = all_expenses
 
     total_amount = sum(e.amount for e in expenses)
+    total_income = sum(e.amount for e in expenses if getattr(e, "type", "expense") == "income")
+    total_expenses = sum(e.amount for e in expenses if getattr(e, "type", "expense") == "expense")
+    net_balance = total_income - total_expenses
+    savings_rate = round((net_balance / total_income * 100), 1) if total_income > 0 else 0.0
     total_count = len(expenses)
 
     cat_map = {}
@@ -77,6 +85,10 @@ def get_expense_summary(
     return ExpenseSummary(
         total_amount=round(total_amount, 2),
         total_count=total_count,
+        total_income=round(total_income, 2),
+        total_expenses=round(total_expenses, 2),
+        net_balance=round(net_balance, 2),
+        savings_rate=savings_rate,
         by_category=by_category
     )
 
@@ -114,6 +126,8 @@ def update_expense(
             detail=f"Expense with id '{expense_id}' not found."
         )
 
+    if payload.type is not None:
+        expense.type = payload.type
     if payload.amount is not None:
         expense.amount = payload.amount
     if payload.category is not None:
@@ -146,3 +160,4 @@ def delete_expense(
     db.delete(expense)
     db.commit()
     return {"detail": f"Expense '{expense_id}' successfully deleted."}
+

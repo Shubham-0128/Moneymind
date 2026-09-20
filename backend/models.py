@@ -19,12 +19,15 @@ class User(Base):
 
     expenses = relationship("Expense", back_populates="user", cascade="all, delete-orphan")
     goals = relationship("Goal", back_populates="user", cascade="all, delete-orphan")
+    budgets = relationship("Budget", back_populates="user", cascade="all, delete-orphan")
+    recurring_rules = relationship("RecurringRule", back_populates="user", cascade="all, delete-orphan")
 
 class Expense(Base):
     __tablename__ = "expenses"
 
     id = Column(String, primary_key=True, default=lambda: generate_id("exp"), index=True)
     user_id = Column(String, ForeignKey("users.id", ondelete="CASCADE"), nullable=True, index=True)
+    type = Column(String, default="expense", nullable=False, index=True)
     amount = Column(Float, nullable=False)
     category = Column(String, nullable=False, index=True)
     date = Column(Date, nullable=False, index=True)
@@ -45,3 +48,29 @@ class Goal(Base):
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
 
     user = relationship("User", back_populates="goals")
+
+class Budget(Base):
+    __tablename__ = "budgets"
+
+    id = Column(String, primary_key=True, default=lambda: generate_id("bgt"), index=True)
+    user_id = Column(String, ForeignKey("users.id", ondelete="CASCADE"), nullable=True, index=True)
+    category = Column(String, nullable=False, index=True)
+    monthly_limit = Column(Float, nullable=False)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+
+    user = relationship("User", back_populates="budgets")
+
+class RecurringRule(Base):
+    __tablename__ = "recurring_rules"
+
+    id = Column(String, primary_key=True, default=lambda: generate_id("rec"), index=True)
+    user_id = Column(String, ForeignKey("users.id", ondelete="CASCADE"), nullable=True, index=True)
+    type = Column(String, default="expense", nullable=False)
+    amount = Column(Float, nullable=False)
+    category = Column(String, nullable=False)
+    frequency = Column(String, default="monthly", nullable=False)
+    next_date = Column(Date, nullable=False)
+    note = Column(String, nullable=True)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+
+    user = relationship("User", back_populates="recurring_rules")

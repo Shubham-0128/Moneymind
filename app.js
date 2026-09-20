@@ -145,8 +145,15 @@ function getAICacheKey() {
 // App State
 let appData = {
     expenses: [],
-    goals: []
+    goals: [],
+    recurring: []
 };
+
+// Category Constants
+const EXPENSE_CATEGORIES = ["Food", "Transport", "Rent", "Entertainment", "Shopping", "Bills", "Health", "Education", "Other"];
+const INCOME_CATEGORIES = ["Salary", "Freelance", "Investment", "Gift", "Refund", "Other"];
+
+let currentTransactionType = 'expense';
 
 // Chart instances & config
 let categoryChart = null;
@@ -162,6 +169,29 @@ const els = {
     expensesEmpty: document.getElementById('expenses-empty'),
     monthTotal: document.getElementById('month-total'),
     budgetWarning: document.getElementById('budget-warning'),
+
+    // Hero metrics
+    heroIncome: document.getElementById('hero-income'),
+    heroExpense: document.getElementById('hero-expense'),
+    heroSavingsRate: document.getElementById('hero-savings-rate'),
+    
+    // Quick Add form elements
+    txTypeInput: document.getElementById('tx-type'),
+    btnTypeExpense: document.getElementById('btn-type-expense'),
+    btnTypeIncome: document.getElementById('btn-type-income'),
+    txSubmitBtn: document.getElementById('tx-submit-btn'),
+    expCategory: document.getElementById('exp-category'),
+
+    // Search and filter toolbar
+    txSearch: document.getElementById('tx-search'),
+    btnClearSearch: document.getElementById('btn-clear-search'),
+    txFilterType: document.getElementById('tx-filter-type'),
+    txSort: document.getElementById('tx-sort'),
+
+    // Recurring Elements
+    recurringModal: document.getElementById('recurring-modal'),
+    recurringCount: document.getElementById('recurring-count'),
+    modalRecurringList: document.getElementById('modal-recurring-list'),
     
     goalForm: document.getElementById('goal-form'),
     goalsList: document.getElementById('goals-list'),
@@ -226,13 +256,15 @@ function seedDemoDataIfEmpty() {
         };
 
         appData.expenses = [
-            { id: 'exp_1', amount: 22000, category: 'Rent', date: formatDate(14), note: 'Monthly apartment rent' },
-            { id: 'exp_2', amount: 3450, category: 'Food', date: formatDate(2), note: 'Weekly organic groceries' },
-            { id: 'exp_3', amount: 1250, category: 'Food', date: formatDate(5), note: 'Dinner with colleagues' },
-            { id: 'exp_4', amount: 850, category: 'Transport', date: formatDate(1), note: 'Metro & cab passes' },
-            { id: 'exp_5', amount: 2100, category: 'Bills', date: formatDate(10), note: 'Electricity & broadband' },
-            { id: 'exp_6', amount: 4800, category: 'Shopping', date: formatDate(8), note: 'Running shoes & gear' },
-            { id: 'exp_7', amount: 650, category: 'Entertainment', date: formatDate(3), note: 'Weekend movies' }
+            { id: 'exp_0', amount: 85000, category: 'Salary', date: formatDate(18), note: 'Monthly tech salary', type: 'income' },
+            { id: 'exp_0b', amount: 15000, category: 'Freelance', date: formatDate(7), note: 'Design consulting client', type: 'income' },
+            { id: 'exp_1', amount: 22000, category: 'Rent', date: formatDate(14), note: 'Monthly apartment rent', type: 'expense' },
+            { id: 'exp_2', amount: 3450, category: 'Food', date: formatDate(2), note: 'Weekly organic groceries', type: 'expense' },
+            { id: 'exp_3', amount: 1250, category: 'Food', date: formatDate(5), note: 'Dinner with colleagues', type: 'expense' },
+            { id: 'exp_4', amount: 850, category: 'Transport', date: formatDate(1), note: 'Metro & cab passes', type: 'expense' },
+            { id: 'exp_5', amount: 2100, category: 'Bills', date: formatDate(10), note: 'Electricity & broadband', type: 'expense' },
+            { id: 'exp_6', amount: 4800, category: 'Shopping', date: formatDate(8), note: 'Running shoes & gear', type: 'expense' },
+            { id: 'exp_7', amount: 650, category: 'Entertainment', date: formatDate(3), note: 'Weekend movies', type: 'expense' }
         ];
 
         const targetDate = new Date();
@@ -244,6 +276,27 @@ function seedDemoDataIfEmpty() {
                 targetAmount: 150000,
                 savedSoFar: 65000,
                 targetDate: targetDate.toISOString().split('T')[0]
+            }
+        ];
+
+        appData.recurring = [
+            {
+                id: 'rec_demo_1',
+                type: 'income',
+                amount: 85000,
+                category: 'Salary',
+                frequency: 'monthly',
+                nextDate: formatDate(-12),
+                note: 'Monthly tech salary'
+            },
+            {
+                id: 'rec_demo_2',
+                type: 'expense',
+                amount: 22000,
+                category: 'Rent',
+                frequency: 'monthly',
+                nextDate: formatDate(-14),
+                note: 'Apartment rent'
             }
         ];
 
@@ -263,7 +316,9 @@ async function loadData() {
             ]);
             appData.expenses = expenses;
             appData.goals = goals;
+            if (!appData.recurring) appData.recurring = [];
             saveData();
+            updateRecurringBadge();
             updateUI();
             return;
         } catch (e) {
@@ -276,14 +331,16 @@ async function loadData() {
     if (stored) {
         try {
             appData = JSON.parse(stored);
+            if (!appData.recurring) appData.recurring = [];
         } catch (e) {
             console.error("Error parsing scoped localStorage data", e);
-            appData = { expenses: [], goals: [] };
+            appData = { expenses: [], goals: [], recurring: [] };
         }
     } else {
-        appData = { expenses: [], goals: [] };
+        appData = { expenses: [], goals: [], recurring: [] };
         seedDemoDataIfEmpty();
     }
+    updateRecurringBadge();
     updateUI();
 }
 
@@ -509,6 +566,8 @@ function setupAuthListeners() {
 // App Initialization
 async function init() {
     setDefaultDate();
+    populateCategoryDropdown('expense');
+    updateRecurringBadge();
     setupEventListeners();
     setupAuthListeners();
 
@@ -567,7 +626,31 @@ function updateUI() {
     checkBudgetInsights();
 }
 
-// --- Expenses ---
+// --- Category and Transaction Type Handling ---
+function populateCategoryDropdown(type, targetSelect = document.getElementById('exp-category')) {
+    if (!targetSelect) return;
+    const list = type === 'income' ? INCOME_CATEGORIES : EXPENSE_CATEGORIES;
+    const prevVal = targetSelect.value;
+    targetSelect.innerHTML = `<option value="" disabled selected>Select category</option>` +
+        list.map(c => `<option value="${c}">${c}</option>`).join('');
+    if (list.includes(prevVal)) {
+        targetSelect.value = prevVal;
+    }
+}
+
+function setTransactionType(type) {
+    currentTransactionType = type;
+    const isExpense = type === 'expense';
+    if (els.txTypeInput) els.txTypeInput.value = type;
+    if (els.btnTypeExpense) els.btnTypeExpense.classList.toggle('active', isExpense);
+    if (els.btnTypeIncome) els.btnTypeIncome.classList.toggle('active', !isExpense);
+    if (els.txSubmitBtn) els.txSubmitBtn.textContent = isExpense ? 'Add Expense' : 'Add Income';
+    populateCategoryDropdown(type);
+}
+window.setTransactionType = setTransactionType;
+window.populateCategoryDropdown = populateCategoryDropdown;
+
+// --- Transactions CRUD ---
 async function handleAddExpense(e) {
     e.preventDefault();
     
@@ -575,17 +658,18 @@ async function handleAddExpense(e) {
     const category = document.getElementById('exp-category').value;
     const date = document.getElementById('exp-date').value;
     const note = document.getElementById('exp-note').value;
+    const type = document.getElementById('tx-type')?.value || 'expense';
     
     if (isNaN(amount) || amount <= 0 || !category || !date) return;
     
-    const expenseData = { amount, category, date, note };
+    const expenseData = { amount, category, date, note, type };
     
     if (window.authService?.isAuthenticated() && window.authService?.currentSession?.token) {
         try {
             const saved = await apiClient.createExpense(expenseData);
             appData.expenses.unshift(saved);
             saveData();
-            showToast("Transaction saved to database", "success");
+            showToast(`${type === 'income' ? 'Income' : 'Expense'} saved to database`, "success");
         } catch (err) {
             console.warn("API save failed, falling back to local:", err);
             expenseData.id = Date.now().toString();
@@ -599,16 +683,18 @@ async function handleAddExpense(e) {
         saveData();
     }
     
-    // Reset form except date
+    // Reset form except date and type
     els.expenseForm.reset();
     setDefaultDate();
+    if (els.txTypeInput) els.txTypeInput.value = currentTransactionType;
+    populateCategoryDropdown(currentTransactionType);
     
     updateUI();
     fetchAISuggestions(false);
 }
 
 async function deleteExpense(id) {
-    if (!confirm("Are you sure you want to delete this expense?")) {
+    if (!confirm("Are you sure you want to delete this transaction?")) {
         return;
     }
     if (window.authService?.isAuthenticated() && window.authService?.currentSession?.token) {
@@ -625,23 +711,72 @@ async function deleteExpense(id) {
     fetchAISuggestions(false);
 }
 
+// Search and Filter Handlers
+function handleFilterChange() {
+    const q = (els.txSearch?.value || '').trim();
+    if (els.btnClearSearch) {
+        els.btnClearSearch.classList.toggle('hidden', !q);
+    }
+    renderExpenses();
+}
+
+function clearSearch() {
+    if (els.txSearch) els.txSearch.value = '';
+    if (els.btnClearSearch) els.btnClearSearch.classList.add('hidden');
+    renderExpenses();
+}
+
+window.handleFilterChange = handleFilterChange;
+window.clearSearch = clearSearch;
+
 function renderExpenses() {
     els.expenseList.innerHTML = '';
     
     if (appData.expenses.length === 0) {
         els.expensesEmpty.classList.remove('hidden');
-        els.expenseList.parentElement.parentElement.classList.add('hidden'); // hide table
+        els.expenseList.parentElement.parentElement.classList.add('hidden');
         return;
     }
     
+    const q = (els.txSearch?.value || '').trim().toLowerCase();
+    const typeFilter = els.txFilterType?.value || 'all';
+    const sort = els.txSort?.value || 'date_desc';
+    
+    // Filter
+    let filtered = appData.expenses.filter(exp => {
+        const itemType = exp.type || 'expense';
+        if (typeFilter !== 'all' && itemType !== typeFilter) return false;
+        if (!q) return true;
+        const noteMatch = (exp.note || '').toLowerCase().includes(q);
+        const catMatch = (exp.category || '').toLowerCase().includes(q);
+        const amountMatch = (exp.amount || '').toString().includes(q);
+        return noteMatch || catMatch || amountMatch;
+    });
+
+    if (filtered.length === 0) {
+        els.expensesEmpty.classList.remove('hidden');
+        els.expenseList.parentElement.parentElement.classList.add('hidden');
+        return;
+    }
+
     els.expensesEmpty.classList.add('hidden');
     els.expenseList.parentElement.parentElement.classList.remove('hidden');
+
+    // Sort
+    if (sort === 'date_desc') {
+        filtered.sort((a, b) => new Date(b.date) - new Date(a.date));
+    } else if (sort === 'date_asc') {
+        filtered.sort((a, b) => new Date(a.date) - new Date(b.date));
+    } else if (sort === 'amount_desc') {
+        filtered.sort((a, b) => b.amount - a.amount);
+    } else if (sort === 'amount_asc') {
+        filtered.sort((a, b) => a.amount - b.amount);
+    }
     
-    // Sort newest first
-    const sorted = [...appData.expenses].sort((a, b) => new Date(b.date) - new Date(a.date));
-    
-    sorted.forEach(exp => {
+    filtered.forEach(exp => {
         const tr = document.createElement('tr');
+        const itemType = exp.type || 'expense';
+        const isIncome = itemType === 'income';
         
         // Format date
         const d = new Date(exp.date);
@@ -649,9 +784,10 @@ function renderExpenses() {
         
         tr.innerHTML = `
             <td>${dateStr}</td>
+            <td><span class="badge-type badge-${itemType}">${isIncome ? 'Income' : 'Expense'}</span></td>
             <td><span class="cat-badge cat-${exp.category.replace(/\s+/g, '')}">${exp.category}</span></td>
             <td><span class="note-text">${exp.note || '-'}</span></td>
-            <td class="amount-col">₹${exp.amount.toLocaleString('en-IN', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</td>
+            <td class="amount-col amount-${itemType}">${isIncome ? '+' : '-'}₹${exp.amount.toLocaleString('en-IN', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</td>
             <td class="action-col">
                 <button class="btn-delete" onclick="deleteExpense('${exp.id}')" title="Delete transaction">
                     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
@@ -669,15 +805,285 @@ function renderMonthTotal() {
     const currentMonth = now.getMonth();
     const currentYear = now.getFullYear();
     
-    const total = appData.expenses
-        .filter(exp => {
-            const d = new Date(exp.date);
-            return d.getMonth() === currentMonth && d.getFullYear() === currentYear;
-        })
+    const monthTx = appData.expenses.filter(exp => {
+        const d = new Date(exp.date);
+        return d.getMonth() === currentMonth && d.getFullYear() === currentYear;
+    });
+
+    const totalIncome = monthTx
+        .filter(exp => exp.type === 'income')
         .reduce((sum, exp) => sum + exp.amount, 0);
+
+    const totalExpense = monthTx
+        .filter(exp => (exp.type || 'expense') === 'expense')
+        .reduce((sum, exp) => sum + exp.amount, 0);
+
+    const netCashFlow = totalIncome - totalExpense;
+    const savingsRate = totalIncome > 0 ? Math.round((netCashFlow / totalIncome) * 100) : 0;
         
-    els.monthTotal.textContent = `₹${total.toLocaleString('en-IN', {minimumFractionDigits: 2, maximumFractionDigits: 2})}`;
+    if (els.monthTotal) {
+        const sign = netCashFlow > 0 ? '+' : '';
+        els.monthTotal.textContent = `${sign}₹${netCashFlow.toLocaleString('en-IN', {minimumFractionDigits: 2, maximumFractionDigits: 2})}`;
+    }
+    if (els.heroIncome) {
+        els.heroIncome.textContent = `+₹${totalIncome.toLocaleString('en-IN', {minimumFractionDigits: 2, maximumFractionDigits: 2})}`;
+    }
+    if (els.heroExpense) {
+        els.heroExpense.textContent = `-₹${totalExpense.toLocaleString('en-IN', {minimumFractionDigits: 2, maximumFractionDigits: 2})}`;
+    }
+    if (els.heroSavingsRate) {
+        els.heroSavingsRate.textContent = `${savingsRate}%`;
+    }
 }
+
+// --- CSV Export & Import ---
+function exportTransactionsCSV() {
+    if (!appData.expenses || appData.expenses.length === 0) {
+        showToast("No transactions to export", "error");
+        return;
+    }
+
+    const headers = ["Date", "Type", "Category", "Note", "Amount"];
+    const rows = appData.expenses.map(e => [
+        e.date,
+        e.type || 'expense',
+        `"${(e.category || '').replace(/"/g, '""')}"`,
+        `"${(e.note || '').replace(/"/g, '""')}"`,
+        e.amount
+    ]);
+
+    const csvContent = [headers.join(','), ...rows.map(r => r.join(','))].join('\r\n');
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `moneymind_transactions_${new Date().toISOString().split('T')[0]}.csv`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+    showToast("Exported transactions to CSV", "success");
+}
+
+function triggerCSVImport() {
+    const input = document.getElementById('csv-file-input');
+    if (input) {
+        input.value = '';
+        input.click();
+    }
+}
+
+async function handleCSVFileSelected(event) {
+    const file = event.target.files[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = async (e) => {
+        const text = e.target.result;
+        const lines = text.split(/\r\n|\n/).map(l => l.trim()).filter(l => l.length > 0);
+        if (lines.length < 2) {
+            showToast("CSV file is empty or missing data rows", "error");
+            return;
+        }
+
+        const headerLine = lines[0].toLowerCase();
+        const hasHeader = headerLine.includes('date') || headerLine.includes('amount');
+        const dataLines = hasHeader ? lines.slice(1) : lines;
+
+        let count = 0;
+        for (const line of dataLines) {
+            const parts = [];
+            let cur = '';
+            let inQuotes = false;
+            for (let i = 0; i < line.length; i++) {
+                const ch = line[i];
+                if (ch === '"') {
+                    inQuotes = !inQuotes;
+                } else if (ch === ',' && !inQuotes) {
+                    parts.push(cur.trim());
+                    cur = '';
+                } else {
+                    cur += ch;
+                }
+            }
+            parts.push(cur.trim());
+
+            if (parts.length < 3) continue;
+
+            let dateVal, typeVal, catVal, noteVal, amountVal;
+            if (parts.length >= 5) {
+                dateVal = parts[0];
+                typeVal = parts[1].toLowerCase() === 'income' ? 'income' : 'expense';
+                catVal = parts[2] || 'Other';
+                noteVal = parts[3] || '';
+                amountVal = parseFloat(parts[4]);
+            } else {
+                dateVal = parts[0];
+                typeVal = 'expense';
+                catVal = parts[1] || 'Other';
+                noteVal = parts[2] || '';
+                amountVal = parseFloat(parts[3]);
+            }
+
+            if (isNaN(amountVal) || amountVal <= 0) continue;
+            if (!dateVal || isNaN(new Date(dateVal).getTime())) {
+                dateVal = new Date().toISOString().split('T')[0];
+            }
+
+            const tx = {
+                id: 'csv_' + Date.now() + '_' + Math.random().toString(36).substring(2, 7),
+                date: dateVal,
+                type: typeVal,
+                category: catVal,
+                note: noteVal,
+                amount: amountVal
+            };
+
+            appData.expenses.unshift(tx);
+            count++;
+        }
+
+        if (count > 0) {
+            saveData();
+            updateUI();
+            showToast(`Imported ${count} transactions from CSV`, "success");
+        } else {
+            showToast("No valid transactions found in CSV", "error");
+        }
+    };
+    reader.readAsText(file);
+}
+
+window.exportTransactionsCSV = exportTransactionsCSV;
+window.triggerCSVImport = triggerCSVImport;
+window.handleCSVFileSelected = handleCSVFileSelected;
+
+// --- Recurring Rules Handlers ---
+function openRecurringModal() {
+    renderRecurringRules();
+    const modal = document.getElementById('recurring-modal');
+    if (modal) modal.classList.remove('hidden');
+}
+
+function closeRecurringModal() {
+    const modal = document.getElementById('recurring-modal');
+    if (modal) modal.classList.add('hidden');
+}
+
+function handleRecTypeChange() {
+    const type = document.getElementById('rec-type').value;
+    populateCategoryDropdown(type, document.getElementById('rec-category'));
+}
+
+function handleAddRecurring(e) {
+    e.preventDefault();
+    const type = document.getElementById('rec-type').value;
+    const amount = parseFloat(document.getElementById('rec-amount').value);
+    const category = document.getElementById('rec-category').value;
+    const frequency = document.getElementById('rec-frequency').value;
+    const nextDate = document.getElementById('rec-next-date').value;
+    const note = document.getElementById('rec-note').value;
+
+    if (isNaN(amount) || amount <= 0 || !category || !nextDate) return;
+
+    if (!appData.recurring) appData.recurring = [];
+    const rule = {
+        id: 'rec_' + Date.now(),
+        type,
+        amount,
+        category,
+        frequency,
+        nextDate,
+        note
+    };
+
+    appData.recurring.push(rule);
+    saveData();
+    renderRecurringRules();
+    updateRecurringBadge();
+    document.getElementById('recurring-form').reset();
+    showToast("Recurring transaction rule saved", "success");
+}
+
+function deleteRecurringRule(id) {
+    if (!appData.recurring) return;
+    appData.recurring = appData.recurring.filter(r => r.id !== id);
+    saveData();
+    renderRecurringRules();
+    updateRecurringBadge();
+    showToast("Recurring rule deleted", "info");
+}
+
+function processDueRecurringNow() {
+    if (!appData.recurring || appData.recurring.length === 0) {
+        showToast("No recurring rules configured", "info");
+        return;
+    }
+    const today = new Date().toISOString().split('T')[0];
+    let processed = 0;
+
+    appData.recurring.forEach(rule => {
+        if (rule.nextDate <= today) {
+            appData.expenses.unshift({
+                id: 'rec_tx_' + Date.now() + '_' + Math.random().toString(36).substring(2, 6),
+                date: rule.nextDate,
+                type: rule.type,
+                category: rule.category,
+                note: (rule.note || '') + ' (Recurring)',
+                amount: rule.amount
+            });
+            const d = new Date(rule.nextDate);
+            if (rule.frequency === 'weekly') d.setDate(d.getDate() + 7);
+            else if (rule.frequency === 'monthly') d.setMonth(d.getMonth() + 1);
+            else if (rule.frequency === 'yearly') d.setFullYear(d.getFullYear() + 1);
+            rule.nextDate = d.toISOString().split('T')[0];
+            processed++;
+        }
+    });
+
+    if (processed > 0) {
+        saveData();
+        updateUI();
+        renderRecurringRules();
+        showToast(`Processed ${processed} due recurring transactions`, "success");
+    } else {
+        showToast("No recurring transactions due today", "info");
+    }
+}
+
+function renderRecurringRules() {
+    const list = document.getElementById('modal-recurring-list');
+    if (!list) return;
+    if (!appData.recurring || appData.recurring.length === 0) {
+        list.innerHTML = `<p class="text-muted" style="font-size: 13px;">No active recurring rules yet.</p>`;
+        return;
+    }
+
+    list.innerHTML = appData.recurring.map(rule => `
+        <div class="modal-item-row">
+            <div class="modal-item-info">
+                <div class="modal-item-title">${rule.note || rule.category} — ₹${rule.amount.toLocaleString()}</div>
+                <div class="modal-item-meta">${rule.type.toUpperCase()} • Every ${rule.frequency} • Next: ${rule.nextDate}</div>
+            </div>
+            <button type="button" class="btn-delete" onclick="deleteRecurringRule('${rule.id}')" title="Delete rule">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M6 19C6 20.1 6.9 21 8 21H16C17.1 21 18 20.1 18 19V7H6V19ZM19 4H15.5L14.5 3H9.5L8.5 4H5V6H19V4Z" fill="currentColor"/></svg>
+            </button>
+        </div>
+    `).join('');
+}
+
+function updateRecurringBadge() {
+    const badge = document.getElementById('recurring-count');
+    if (badge) badge.textContent = (appData.recurring || []).length;
+}
+
+window.openRecurringModal = openRecurringModal;
+window.closeRecurringModal = closeRecurringModal;
+window.handleRecTypeChange = handleRecTypeChange;
+window.handleAddRecurring = handleAddRecurring;
+window.deleteRecurringRule = deleteRecurringRule;
+window.processDueRecurringNow = processDueRecurringNow;
+
 
 // --- Goals ---
 async function handleAddGoal(e) {
@@ -860,7 +1266,14 @@ function updateCharts() {
         'Entertainment': '#D946EF',
         'Shopping': '#0284C7',
         'Bills': '#EA580C',
-        'Other': '#64748B'
+        'Health': '#EF4444',
+        'Education': '#8B5CF6',
+        'Other': '#64748B',
+        'Salary': '#10B981',
+        'Freelance': '#06B6D4',
+        'Investment': '#EAB308',
+        'Gift': '#F43F5E',
+        'Refund': '#3B82F6'
     };
     
     const pieData = {

@@ -111,3 +111,42 @@ def test_expense_summary(client, auth_headers):
     assert data["by_category"][1]["category"] == "Food"
     assert data["by_category"][1]["total"] == 400.0
     assert data["by_category"][1]["count"] == 2
+
+def test_create_income_and_net_flow(client, auth_headers):
+    # Add salary income
+    res_inc = client.post("/api/expenses", json={
+        "amount": 50000.0,
+        "category": "Salary",
+        "date": "2026-03-01",
+        "type": "income",
+        "note": "Monthly tech salary"
+    }, headers=auth_headers)
+    assert res_inc.status_code == 201
+    inc_data = res_inc.json()
+    assert inc_data["type"] == "income"
+    assert inc_data["amount"] == 50000.0
+    assert inc_data["category"] == "Salary"
+
+    # Add expense
+    res_exp = client.post("/api/expenses", json={
+        "amount": 10000.0,
+        "category": "Rent",
+        "date": "2026-03-02",
+        "type": "expense"
+    }, headers=auth_headers)
+    assert res_exp.status_code == 201
+
+    # Filter by type=income
+    res_only_inc = client.get("/api/expenses?type=income", headers=auth_headers)
+    assert res_only_inc.status_code == 200
+    assert len(res_only_inc.json()) == 1
+    assert res_only_inc.json()[0]["type"] == "income"
+
+    # Check cash flow summary
+    res_sum = client.get("/api/expenses/summary", headers=auth_headers)
+    assert res_sum.status_code == 200
+    sum_data = res_sum.json()
+    assert sum_data["total_income"] == 50000.0
+    assert sum_data["total_expenses"] == 10000.0
+    assert sum_data["net_balance"] == 40000.0
+    assert sum_data["savings_rate"] == 80.0

@@ -25,8 +25,11 @@ class UserOut(UserBase):
 # --- Expense Schemas ---
 
 ALLOWED_CATEGORIES = {
+    # Expenses
     "Food", "Rent", "Transport", "Bills", "Shopping",
-    "Entertainment", "Health", "Education", "Investment", "Other"
+    "Entertainment", "Health", "Education", "Other",
+    # Income
+    "Salary", "Freelance", "Investment", "Gift", "Refund"
 }
 
 class ExpenseBase(BaseModel):
@@ -34,6 +37,7 @@ class ExpenseBase(BaseModel):
     category: str = Field(..., min_length=1, max_length=50)
     date: date
     note: Optional[str] = Field(None, max_length=255)
+    type: str = Field("expense", pattern="^(expense|income)$")
 
     @field_validator("category")
     @classmethod
@@ -56,6 +60,7 @@ class ExpenseUpdate(BaseModel):
     category: Optional[str] = Field(None, min_length=1, max_length=50)
     date: Optional[date] = None
     note: Optional[str] = Field(None, max_length=255)
+    type: Optional[str] = Field(None, pattern="^(expense|income)$")
 
     @field_validator("category")
     @classmethod
@@ -85,7 +90,47 @@ class CategoryTotal(BaseModel):
 class ExpenseSummary(BaseModel):
     total_amount: float
     total_count: int
+    total_income: float = 0.0
+    total_expenses: float = 0.0
+    net_balance: float = 0.0
+    savings_rate: float = 0.0
     by_category: List[CategoryTotal]
+
+# --- Budget Schemas ---
+
+class BudgetBase(BaseModel):
+    category: str = Field(..., min_length=1, max_length=50)
+    monthly_limit: float = Field(..., gt=0)
+
+class BudgetCreate(BudgetBase):
+    pass
+
+class BudgetOut(BudgetBase):
+    id: str
+    user_id: Optional[str] = None
+    created_at: datetime
+
+    model_config = ConfigDict(from_attributes=True)
+
+# --- Recurring Rule Schemas ---
+
+class RecurringRuleBase(BaseModel):
+    type: str = Field("expense", pattern="^(expense|income)$")
+    amount: float = Field(..., gt=0)
+    category: str = Field(..., min_length=1, max_length=50)
+    frequency: str = Field("monthly", pattern="^(weekly|monthly|yearly)$")
+    next_date: date
+    note: Optional[str] = Field(None, max_length=255)
+
+class RecurringRuleCreate(RecurringRuleBase):
+    pass
+
+class RecurringRuleOut(RecurringRuleBase):
+    id: str
+    user_id: Optional[str] = None
+    created_at: datetime
+
+    model_config = ConfigDict(from_attributes=True)
 
 # --- Goal Schemas ---
 

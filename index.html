@@ -89,8 +89,25 @@
             <!-- Hero Summary Card -->
             <section class="card summary-card bento-hero">
                 <div class="summary-content">
-                    <h2>Total Spent This Month</h2>
+                    <div class="hero-header-row">
+                        <h2>Net Cash Flow</h2>
+                        <span class="hero-period-badge" id="hero-period-badge">This Month</span>
+                    </div>
                     <div class="total-amount" id="month-total">₹0.00</div>
+                    <div class="hero-metrics-grid">
+                        <div class="hero-metric-item">
+                            <span class="metric-label">Income</span>
+                            <span class="metric-val text-income" id="hero-income">+₹0.00</span>
+                        </div>
+                        <div class="hero-metric-item">
+                            <span class="metric-label">Expenses</span>
+                            <span class="metric-val text-expense" id="hero-expense">-₹0.00</span>
+                        </div>
+                        <div class="hero-metric-item">
+                            <span class="metric-label">Savings Rate</span>
+                            <span class="metric-val" id="hero-savings-rate">0%</span>
+                        </div>
+                    </div>
                     <div id="budget-warning" class="budget-warning hidden">
                         <!-- Warning message will be injected here -->
                     </div>
@@ -103,10 +120,17 @@
                 </div>
             </section>
 
-            <!-- Add Expense Form -->
+            <!-- Add Expense / Income Form -->
             <section class="card form-card bento-form">
-                <h2>Quick Add Expense</h2>
+                <div class="form-header-row">
+                    <h2>Quick Add</h2>
+                    <div class="type-toggle-group">
+                        <button type="button" class="type-toggle-btn active" id="btn-type-expense" onclick="setTransactionType('expense')">Expense</button>
+                        <button type="button" class="type-toggle-btn" id="btn-type-income" onclick="setTransactionType('income')">Income</button>
+                    </div>
+                </div>
                 <form id="expense-form" class="inline-form">
+                    <input type="hidden" id="tx-type" value="expense">
                     <div class="form-group amount-group">
                         <label for="exp-amount">Amount (₹)</label>
                         <input type="number" id="exp-amount" min="0.01" step="0.01" required placeholder="0.00">
@@ -130,11 +154,11 @@
                     </div>
                     <div class="form-group note-group">
                         <label for="exp-note">Note</label>
-                        <input type="text" id="exp-note" placeholder="e.g. Groceries, coffee">
+                        <input type="text" id="exp-note" placeholder="e.g. Groceries, salary, coffee">
                     </div>
                     <div class="form-group btn-group">
                         <label class="invisible">Action</label>
-                        <button type="submit" class="btn btn-primary">Add Expense</button>
+                        <button type="submit" class="btn btn-primary" id="tx-submit-btn">Add Expense</button>
                     </div>
                 </form>
             </section>
@@ -274,14 +298,63 @@
                 </div>
             </section>
 
-            <!-- Expense List -->
+            <!-- Transactions List -->
             <section class="card list-card bento-list">
-                <h2>Recent Transactions</h2>
+                <div class="card-header-with-action">
+                    <h2>Recent Transactions</h2>
+                    <div class="tx-header-actions">
+                        <button type="button" class="btn btn-sm btn-secondary" id="btn-open-recurring-modal" onclick="openRecurringModal()" title="Manage recurring rules">
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"></polyline><polyline points="1 20 1 14 7 14"></polyline><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path></svg>
+                            Recurring (<span id="recurring-count">0</span>)
+                        </button>
+                        <button type="button" class="btn btn-sm btn-outline-primary" id="btn-export-csv" onclick="exportTransactionsCSV()" title="Export transactions to CSV file">
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
+                            Export CSV
+                        </button>
+                        <button type="button" class="btn btn-sm btn-outline-primary" id="btn-import-csv" onclick="triggerCSVImport()" title="Import transactions from CSV file">
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="17 8 12 3 7 8"></polyline><line x1="12" y1="3" x2="12" y2="15"></line></svg>
+                            Import CSV
+                        </button>
+                        <input type="file" id="csv-file-input" accept=".csv" class="hidden" onchange="handleCSVFileSelected(event)">
+                    </div>
+                </div>
+
+                <!-- Search, Filter & Sort Controls Toolbar -->
+                <div class="tx-toolbar">
+                    <div class="tx-search-box">
+                        <svg class="search-icon" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+                        </svg>
+                        <input type="text" id="tx-search" placeholder="Search note, category, amount..." oninput="handleFilterChange()">
+                        <button type="button" id="btn-clear-search" class="clear-search-btn hidden" onclick="clearSearch()" title="Clear search">&times;</button>
+                    </div>
+                    <div class="tx-filters-row">
+                        <div class="filter-item">
+                            <label for="tx-filter-type">Type</label>
+                            <select id="tx-filter-type" onchange="handleFilterChange()">
+                                <option value="all">All Types</option>
+                                <option value="expense">Expenses Only</option>
+                                <option value="income">Income Only</option>
+                            </select>
+                        </div>
+                        <div class="filter-item">
+                            <label for="tx-sort">Sort</label>
+                            <select id="tx-sort" onchange="handleFilterChange()">
+                                <option value="date_desc" selected>Date (Newest)</option>
+                                <option value="date_asc">Date (Oldest)</option>
+                                <option value="amount_desc">Amount (Highest)</option>
+                                <option value="amount_asc">Amount (Lowest)</option>
+                            </select>
+                        </div>
+                    </div>
+                </div>
+
                 <div class="table-responsive">
                     <table class="expense-table">
                         <thead>
                             <tr>
                                 <th>Date</th>
+                                <th>Type</th>
                                 <th>Category</th>
                                 <th>Note</th>
                                 <th class="amount-col">Amount</th>
@@ -289,7 +362,7 @@
                             </tr>
                         </thead>
                         <tbody id="expense-list">
-                            <!-- Expenses will be injected here -->
+                            <!-- Transactions will be injected here -->
                         </tbody>
                     </table>
                 </div>
@@ -301,7 +374,7 @@
                         <path d="M14 15H16" stroke="var(--primary)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
                     </svg>
                     <h3>It's quiet here</h3>
-                    <p>Add your first expense to see your dashboard come to life.</p>
+                    <p>Add a transaction above or adjust your search filters.</p>
                 </div>
             </section>
             
@@ -381,6 +454,67 @@
                     Sign In
                 </button>
             </form>
+        </div>
+    </div>
+
+    <!-- Recurring Transactions Modal -->
+    <div id="recurring-modal" class="modal-backdrop hidden">
+        <div class="modal-card modal-card-lg">
+            <button type="button" class="modal-close" onclick="closeRecurringModal()" title="Close modal">&times;</button>
+            <div class="auth-header">
+                <h2>Recurring Transactions</h2>
+                <p>Automate recurring salary, subscriptions, bills, and fixed expenses</p>
+            </div>
+            <form id="recurring-form" class="recurring-modal-form" onsubmit="handleAddRecurring(event)">
+                <div class="form-row-grid">
+                    <div class="form-group">
+                        <label for="rec-type">Type</label>
+                        <select id="rec-type" onchange="handleRecTypeChange()">
+                            <option value="expense">Expense</option>
+                            <option value="income">Income</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label for="rec-amount">Amount (₹)</label>
+                        <input type="number" id="rec-amount" min="0.01" step="0.01" required placeholder="0.00">
+                    </div>
+                    <div class="form-group">
+                        <label for="rec-category">Category</label>
+                        <select id="rec-category" required>
+                            <option value="Bills">Bills</option>
+                            <option value="Rent">Rent</option>
+                            <option value="Entertainment">Entertainment</option>
+                            <option value="Food">Food</option>
+                            <option value="Other">Other</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label for="rec-frequency">Frequency</label>
+                        <select id="rec-frequency">
+                            <option value="monthly" selected>Monthly</option>
+                            <option value="weekly">Weekly</option>
+                            <option value="yearly">Yearly</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label for="rec-next-date">Next Due Date</label>
+                        <input type="date" id="rec-next-date" required>
+                    </div>
+                    <div class="form-group full-span">
+                        <label for="rec-note">Note / Description</label>
+                        <input type="text" id="rec-note" placeholder="e.g. Monthly Salary, House Rent, Netflix">
+                    </div>
+                </div>
+                <div class="modal-form-actions">
+                    <button type="submit" class="btn btn-primary">Save Recurring Rule</button>
+                    <button type="button" class="btn btn-secondary" onclick="processDueRecurringNow()">Process Due Now</button>
+                </div>
+            </form>
+            <div class="modal-divider"></div>
+            <h3 class="modal-subheading">Active Recurring Rules</h3>
+            <div id="modal-recurring-list" class="modal-items-list">
+                <p class="text-muted" style="font-size: 13px;">No active recurring rules yet.</p>
+            </div>
         </div>
     </div>
 
