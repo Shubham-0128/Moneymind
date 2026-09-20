@@ -150,3 +150,75 @@ def test_create_income_and_net_flow(client, auth_headers):
     assert sum_data["total_expenses"] == 10000.0
     assert sum_data["net_balance"] == 40000.0
     assert sum_data["savings_rate"] == 80.0
+
+def test_expense_decimal_precision(client, auth_headers):
+    # Valid 2 decimal places
+    res = client.post("/api/expenses", json={
+        "amount": 19.99,
+        "category": "Food",
+        "date": "2026-03-15"
+    }, headers=auth_headers)
+    assert res.status_code == 201
+    assert res.json()["amount"] == 19.99
+
+    # Rejects more than 2 decimal places
+    res_invalid = client.post("/api/expenses", json={
+        "amount": 19.999,
+        "category": "Food",
+        "date": "2026-03-15"
+    }, headers=auth_headers)
+    assert res_invalid.status_code == 422
+
+def test_expense_summary_month_year_filter(client, auth_headers):
+    # Add expense in March 2026
+    client.post("/api/expenses", json={"amount": 3000, "category": "Food", "date": "2026-03-10"}, headers=auth_headers)
+    # Add expense in February 2026
+    client.post("/api/expenses", json={"amount": 1500, "category": "Food", "date": "2026-02-15"}, headers=auth_headers)
+
+    # Summary filtered to March 2026 only
+    res_march = client.get("/api/expenses/summary?month=3&year=2026", headers=auth_headers)
+    assert res_march.status_code == 200
+    march_data = res_march.json()
+    assert march_data["total_amount"] == 3000.0
+    assert march_data["total_count"] == 1
+
+    # Summary filtered to February 2026 only
+    res_feb = client.get("/api/expenses/summary?month=2&year=2026", headers=auth_headers)
+    assert res_feb.status_code == 200
+    feb_data = res_feb.json()
+    assert feb_data["total_amount"] == 1500.0
+    assert feb_data["total_count"] == 1
+
+def test_expense_tenant_isolation(client, auth_headers):
+    # User 1 creates an expense
+    created = client.post("/api/expenses", json={
+        "amount": 1200, "category": "Bills", "date": "2026-03-01"
+    }, headers=auth_headers).json()
+    exp_id = created["id"]
+
+    # Register and login User 2
+    client.post("/api/auth/register", json={
+        "name": "Second User", "email": "user2@moneymind.app", "password": "Password123!"
+    })
+    user2_login = client.post("/api/auth/login", json={
+        "email": "user2@moneymind.app", "password": "Password123!"
+    }).json()
+    user2_headers = {"Authorization": f"Bearer {user2_login['token']}"}
+
+    # User 2 cannot see User 1's expense in list
+    res_list = client.get("/api/expenses", headers=user2_headers)
+    assert res_list.status_code == 200
+    assert len(res_list.json()) == 0
+
+    # User 2 cannot get User 1's expense directly (IDOR prevention)
+    res_get = client.get(f"/api/expenses/{exp_id}", headers=user2_headers)
+    assert res_get.status_code == 404
+
+    # User 2 cannot update User 1's expense
+    res_put = client.put(f"/api/expenses/{exp_id}", json={"amount": 9999}, headers=user2_headers)
+    assert res_put.status_code == 404
+
+    # User 2 cannot delete User 1's expense
+    res_del = client.delete(f"/api/expenses/{exp_id}", headers=user2_headers)
+    assert res_del.status_code == 404
+

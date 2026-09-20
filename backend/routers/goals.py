@@ -11,7 +11,7 @@ router = APIRouter(prefix="/api/goals", tags=["Savings Goals"])
 def format_goal_out(goal: Goal) -> GoalOut:
     progress = 0.0
     if goal.target_amount > 0:
-        progress = round(min(100.0, (goal.saved_so_far / goal.target_amount) * 100.0), 1)
+        progress = round(min(100.0, float(goal.saved_so_far / goal.target_amount) * 100.0), 1)
     return GoalOut(
         id=goal.id,
         user_id=goal.user_id,
@@ -22,6 +22,7 @@ def format_goal_out(goal: Goal) -> GoalOut:
         progress_percentage=progress,
         created_at=goal.created_at
     )
+
 
 @router.get("", response_model=List[GoalOut])
 def list_goals(
@@ -114,10 +115,11 @@ def add_savings(
             detail=f"Savings goal with id '{goal_id}' not found."
         )
 
-    goal.saved_so_far = round(min(goal.target_amount, goal.saved_so_far + payload.amount), 2)
+    goal.saved_so_far = min(goal.target_amount, goal.saved_so_far + payload.amount)
     db.commit()
     db.refresh(goal)
     return format_goal_out(goal)
+
 
 @router.delete("/{goal_id}", status_code=status.HTTP_200_OK)
 def delete_goal(

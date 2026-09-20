@@ -1,6 +1,7 @@
 import uuid
 from datetime import datetime, date, timezone
-from sqlalchemy import Column, String, Float, Boolean, DateTime, Date, ForeignKey
+from decimal import Decimal
+from sqlalchemy import Column, String, Numeric, Boolean, DateTime, Date, ForeignKey
 from sqlalchemy.orm import relationship
 from backend.database import Base
 
@@ -28,7 +29,7 @@ class Expense(Base):
     id = Column(String, primary_key=True, default=lambda: generate_id("exp"), index=True)
     user_id = Column(String, ForeignKey("users.id", ondelete="CASCADE"), nullable=True, index=True)
     type = Column(String, default="expense", nullable=False, index=True)
-    amount = Column(Float, nullable=False)
+    amount = Column(Numeric(12, 2), nullable=False)
     category = Column(String, nullable=False, index=True)
     date = Column(Date, nullable=False, index=True)
     note = Column(String, nullable=True)
@@ -42,8 +43,8 @@ class Goal(Base):
     id = Column(String, primary_key=True, default=lambda: generate_id("goal"), index=True)
     user_id = Column(String, ForeignKey("users.id", ondelete="CASCADE"), nullable=True, index=True)
     name = Column(String, nullable=False)
-    target_amount = Column(Float, nullable=False)
-    saved_so_far = Column(Float, default=0.0)
+    target_amount = Column(Numeric(12, 2), nullable=False)
+    saved_so_far = Column(Numeric(12, 2), default=Decimal("0.00"), nullable=False)
     target_date = Column(Date, nullable=False)
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
 
@@ -55,7 +56,7 @@ class Budget(Base):
     id = Column(String, primary_key=True, default=lambda: generate_id("bgt"), index=True)
     user_id = Column(String, ForeignKey("users.id", ondelete="CASCADE"), nullable=True, index=True)
     category = Column(String, nullable=False, index=True)
-    monthly_limit = Column(Float, nullable=False)
+    monthly_limit = Column(Numeric(12, 2), nullable=False)
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
 
     user = relationship("User", back_populates="budgets")
@@ -66,7 +67,7 @@ class RecurringRule(Base):
     id = Column(String, primary_key=True, default=lambda: generate_id("rec"), index=True)
     user_id = Column(String, ForeignKey("users.id", ondelete="CASCADE"), nullable=True, index=True)
     type = Column(String, default="expense", nullable=False)
-    amount = Column(Float, nullable=False)
+    amount = Column(Numeric(12, 2), nullable=False)
     category = Column(String, nullable=False)
     frequency = Column(String, default="monthly", nullable=False)
     next_date = Column(Date, nullable=False)

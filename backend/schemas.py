@@ -1,6 +1,17 @@
 from datetime import date, datetime
-from typing import Optional, List
-from pydantic import BaseModel, Field, EmailStr, field_validator, ConfigDict
+from decimal import Decimal
+from typing import Optional, List, Annotated
+from pydantic import BaseModel, Field, EmailStr, field_validator, ConfigDict, PlainSerializer
+
+# Serializes Decimal as float in API JSON responses while enforcing Decimal precision in models
+MoneyDecimal = Annotated[
+    Decimal,
+    PlainSerializer(lambda x: float(x) if x is not None else None, return_type=float, when_used="json")
+]
+
+# Base schema ensuring proper ORM reading
+class FinancialBaseModel(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
 
 # --- User Schemas ---
 
@@ -32,8 +43,8 @@ ALLOWED_CATEGORIES = {
     "Salary", "Freelance", "Investment", "Gift", "Refund"
 }
 
-class ExpenseBase(BaseModel):
-    amount: float = Field(..., gt=0, description="Expense amount must be strictly greater than 0")
+class ExpenseBase(FinancialBaseModel):
+    amount: MoneyDecimal = Field(..., gt=0, decimal_places=2, description="Expense amount must be strictly greater than 0")
     category: str = Field(..., min_length=1, max_length=50)
     date: date
     note: Optional[str] = Field(None, max_length=255)
@@ -55,8 +66,8 @@ class ExpenseCreate(ExpenseBase):
     id: Optional[str] = None
     user_id: Optional[str] = None
 
-class ExpenseUpdate(BaseModel):
-    amount: Optional[float] = Field(None, gt=0)
+class ExpenseUpdate(FinancialBaseModel):
+    amount: Optional[MoneyDecimal] = Field(None, gt=0, decimal_places=2)
     category: Optional[str] = Field(None, min_length=1, max_length=50)
     date: Optional[date] = None
     note: Optional[str] = Field(None, max_length=255)
@@ -80,27 +91,25 @@ class ExpenseOut(ExpenseBase):
     user_id: Optional[str] = None
     created_at: datetime
 
-    model_config = ConfigDict(from_attributes=True)
-
-class CategoryTotal(BaseModel):
+class CategoryTotal(FinancialBaseModel):
     category: str
-    total: float
+    total: MoneyDecimal
     count: int
 
-class ExpenseSummary(BaseModel):
-    total_amount: float
+class ExpenseSummary(FinancialBaseModel):
+    total_amount: MoneyDecimal
     total_count: int
-    total_income: float = 0.0
-    total_expenses: float = 0.0
-    net_balance: float = 0.0
+    total_income: MoneyDecimal = Decimal("0.00")
+    total_expenses: MoneyDecimal = Decimal("0.00")
+    net_balance: MoneyDecimal = Decimal("0.00")
     savings_rate: float = 0.0
     by_category: List[CategoryTotal]
 
 # --- Budget Schemas ---
 
-class BudgetBase(BaseModel):
+class BudgetBase(FinancialBaseModel):
     category: str = Field(..., min_length=1, max_length=50)
-    monthly_limit: float = Field(..., gt=0)
+    monthly_limit: MoneyDecimal = Field(..., gt=0, decimal_places=2)
 
 class BudgetCreate(BudgetBase):
     pass
@@ -110,13 +119,11 @@ class BudgetOut(BudgetBase):
     user_id: Optional[str] = None
     created_at: datetime
 
-    model_config = ConfigDict(from_attributes=True)
-
 # --- Recurring Rule Schemas ---
 
-class RecurringRuleBase(BaseModel):
+class RecurringRuleBase(FinancialBaseModel):
     type: str = Field("expense", pattern="^(expense|income)$")
-    amount: float = Field(..., gt=0)
+    amount: MoneyDecimal = Field(..., gt=0, decimal_places=2)
     category: str = Field(..., min_length=1, max_length=50)
     frequency: str = Field("monthly", pattern="^(weekly|monthly|yearly)$")
     next_date: date
@@ -130,34 +137,32 @@ class RecurringRuleOut(RecurringRuleBase):
     user_id: Optional[str] = None
     created_at: datetime
 
-    model_config = ConfigDict(from_attributes=True)
-
 # --- Goal Schemas ---
 
-class GoalBase(BaseModel):
+class GoalBase(FinancialBaseModel):
     name: str = Field(..., min_length=1, max_length=100)
-    target_amount: float = Field(..., gt=0, description="Target amount must be strictly greater than 0")
+    target_amount: MoneyDecimal = Field(..., gt=0, decimal_places=2, description="Target amount must be strictly greater than 0")
     target_date: date
 
 class GoalCreate(GoalBase):
     id: Optional[str] = None
     user_id: Optional[str] = None
-    saved_so_far: float = Field(default=0.0, ge=0)
+    saved_so_far: MoneyDecimal = Field(default=Decimal("0.00"), ge=0, decimal_places=2)
 
-class GoalUpdate(BaseModel):
+class GoalUpdate(FinancialBaseModel):
     name: Optional[str] = Field(None, min_length=1, max_length=100)
-    target_amount: Optional[float] = Field(None, gt=0)
+    target_amount: Optional[MoneyDecimal] = Field(None, gt=0, decimal_places=2)
     target_date: Optional[date] = None
-    saved_so_far: Optional[float] = Field(None, ge=0)
+    saved_so_far: Optional[MoneyDecimal] = Field(None, ge=0, decimal_places=2)
 
-class GoalAddSavings(BaseModel):
-    amount: float = Field(..., gt=0, description="Savings increment must be strictly greater than 0")
+class GoalAddSavings(FinancialBaseModel):
+    amount: MoneyDecimal = Field(..., gt=0, decimal_places=2, description="Savings increment must be strictly greater than 0")
 
 class GoalOut(GoalBase):
     id: str
     user_id: Optional[str] = None
-    saved_so_far: float
+    saved_so_far: MoneyDecimal
     progress_percentage: float = 0.0
     created_at: datetime
 
-    model_config = ConfigDict(from_attributes=True)
+

@@ -10,5 +10,7 @@ INTERVIEW_GUIDE.md
 __pycache__/
 *.pyc
 *.db
+*.zip
 .pytest_cache/
+
 

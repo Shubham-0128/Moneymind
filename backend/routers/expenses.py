@@ -1,6 +1,8 @@
 from datetime import date
+from decimal import Decimal
 from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException, Query, status
+from sqlalchemy import extract, func, case
 from sqlalchemy.orm import Session
 from backend.database import get_db
 from backend.models import Expense, User
@@ -57,40 +59,56 @@ def get_expense_summary(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
-    all_expenses = db.query(Expense).filter(Expense.user_id == current_user.id).all()
-    if month and year:
-        expenses = [e for e in all_expenses if e.date.month == month and e.date.year == year]
-    else:
-        expenses = all_expenses
+    base_filter = [Expense.user_id == current_user.id]
+    if year is not None:
+        base_filter.append(extract("year", Expense.date) == year)
+    if month is not None:
+        base_filter.append(extract("month", Expense.date) == month)
 
-    total_amount = sum(e.amount for e in expenses)
-    total_income = sum(e.amount for e in expenses if getattr(e, "type", "expense") == "income")
-    total_expenses = sum(e.amount for e in expenses if getattr(e, "type", "expense") == "expense")
+    # 1. Aggregate financial totals directly in the database
+    totals_row = db.query(
+        func.coalesce(func.sum(Expense.amount), Decimal("0.00")).label("total_amount"),
+        func.count(Expense.id).label("total_count"),
+        func.coalesce(
+            func.sum(case((Expense.type == "income", Expense.amount), else_=Decimal("0.00"))),
+            Decimal("0.00")
+        ).label("total_income"),
+        func.coalesce(
+            func.sum(case((Expense.type == "expense", Expense.amount), else_=Decimal("0.00"))),
+            Decimal("0.00")
+        ).label("total_expenses")
+    ).filter(*base_filter).first()
+
+    total_amount = totals_row.total_amount if totals_row else Decimal("0.00")
+    total_count = totals_row.total_count if totals_row else 0
+    total_income = totals_row.total_income if totals_row else Decimal("0.00")
+    total_expenses = totals_row.total_expenses if totals_row else Decimal("0.00")
+
     net_balance = total_income - total_expenses
-    savings_rate = round((net_balance / total_income * 100), 1) if total_income > 0 else 0.0
-    total_count = len(expenses)
+    savings_rate = round(float(net_balance / total_income * 100), 1) if total_income > 0 else 0.0
 
-    cat_map = {}
-    for e in expenses:
-        if e.category not in cat_map:
-            cat_map[e.category] = {"total": 0.0, "count": 0}
-        cat_map[e.category]["total"] += e.amount
-        cat_map[e.category]["count"] += 1
+    # 2. Aggregate category totals directly in the database
+    cat_rows = db.query(
+        Expense.category,
+        func.coalesce(func.sum(Expense.amount), Decimal("0.00")).label("cat_total"),
+        func.count(Expense.id).label("cat_count")
+    ).filter(*base_filter).group_by(Expense.category).order_by(func.sum(Expense.amount).desc()).all()
 
     by_category = [
-        CategoryTotal(category=cat, total=data["total"], count=data["count"])
-        for cat, data in sorted(cat_map.items(), key=lambda x: x[1]["total"], reverse=True)
+        CategoryTotal(category=cat, total=cat_total, count=cat_count)
+        for cat, cat_total, cat_count in cat_rows
     ]
 
     return ExpenseSummary(
-        total_amount=round(total_amount, 2),
+        total_amount=total_amount,
         total_count=total_count,
-        total_income=round(total_income, 2),
-        total_expenses=round(total_expenses, 2),
-        net_balance=round(net_balance, 2),
+        total_income=total_income,
+        total_expenses=total_expenses,
+        net_balance=net_balance,
         savings_rate=savings_rate,
         by_category=by_category
     )
+
 
 @router.get("/{expense_id}", response_model=ExpenseOut)
 def get_expense(

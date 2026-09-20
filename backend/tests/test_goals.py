@@ -81,3 +81,57 @@ def test_delete_goal(client, auth_headers):
 
     get_res = client.get(f"/api/goals/{goal_id}", headers=auth_headers)
     assert get_res.status_code == 404
+
+def test_goal_decimal_precision(client, auth_headers):
+    res = client.post("/api/goals", json={
+        "name": "Trip to Japan",
+        "target_amount": 250000.50,
+        "saved_so_far": 50000.25,
+        "target_date": "2026-12-31"
+    }, headers=auth_headers)
+    assert res.status_code == 201
+    data = res.json()
+    assert data["target_amount"] == 250000.50
+    assert data["saved_so_far"] == 50000.25
+
+    # Rejects >2 decimal places
+    res_inv = client.post("/api/goals", json={
+        "name": "Trip",
+        "target_amount": 1000.999,
+        "target_date": "2026-12-31"
+    }, headers=auth_headers)
+    assert res_inv.status_code == 422
+
+def test_goal_tenant_isolation(client, auth_headers):
+    # User 1 creates goal
+    created = client.post("/api/goals", json={
+        "name": "Private Goal", "target_amount": 10000, "target_date": "2026-12-31"
+    }, headers=auth_headers).json()
+    goal_id = created["id"]
+
+    # Register and login User 2
+    client.post("/api/auth/register", json={
+        "name": "Another User", "email": "another@moneymind.app", "password": "Password123!"
+    })
+    user2_login = client.post("/api/auth/login", json={
+        "email": "another@moneymind.app", "password": "Password123!"
+    }).json()
+    user2_headers = {"Authorization": f"Bearer {user2_login['token']}"}
+
+    # User 2 cannot see User 1's goal in list
+    res_list = client.get("/api/goals", headers=user2_headers)
+    assert res_list.status_code == 200
+    assert len(res_list.json()) == 0
+
+    # User 2 cannot get User 1's goal directly
+    res_get = client.get(f"/api/goals/{goal_id}", headers=user2_headers)
+    assert res_get.status_code == 404
+
+    # User 2 cannot add savings to User 1's goal
+    res_patch = client.patch(f"/api/goals/{goal_id}/savings", json={"amount": 500}, headers=user2_headers)
+    assert res_patch.status_code == 404
+
+    # User 2 cannot delete User 1's goal
+    res_del = client.delete(f"/api/goals/{goal_id}", headers=user2_headers)
+    assert res_del.status_code == 404
+

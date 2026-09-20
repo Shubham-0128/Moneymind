@@ -3,8 +3,11 @@ import json
 import logging
 from typing import Any, Dict, List
 import httpx
-from fastapi import APIRouter, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel
+
+from backend.models import User
+from backend.security import get_current_user
 
 logger = logging.getLogger("moneymind.ai")
 router = APIRouter(prefix="/api/ai", tags=["AI Budget Coaching"])
@@ -18,8 +21,8 @@ class AISuggestionsResponse(BaseModel):
 def generate_local_fallback_suggestions(summary: Dict[str, Any]) -> List[str]:
     # Smart algorithmic suggestions when Anthropic API key is not configured
     suggestions = []
-    month_total = summary.get("monthTotal", summary.get("total_amount", 0))
-    cat_breakdown = summary.get("categoryBreakdown", {})
+    month_total = summary.get("monthTotal", summary.get("total_amount", summary.get("currentMonthTotal", 0)))
+    cat_breakdown = summary.get("categoryBreakdown", summary.get("spendingByCategory", {}))
 
     if isinstance(cat_breakdown, dict) and cat_breakdown:
         highest_cat = max(cat_breakdown.items(), key=lambda x: x[1])
@@ -46,7 +49,10 @@ def generate_local_fallback_suggestions(summary: Dict[str, Any]) -> List[str]:
     return suggestions[:3]
 
 @router.post("/suggestions", response_model=AISuggestionsResponse)
-async def get_suggestions(payload: Dict[str, Any]):
+async def get_suggestions(
+    payload: Dict[str, Any],
+    current_user: User = Depends(get_current_user)
+):
     api_key = os.getenv("ANTHROPIC_API_KEY")
     summary = payload.get("summary", payload)
 

@@ -20,21 +20,55 @@ logger = logging.getLogger("moneymind")
 ROOT_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 
 def seed_demo_user():
+    # Only seed demo account if explicitly enabled and not in production
+    if not settings.ENABLE_DEMO_USER or settings.ENVIRONMENT == "production":
+        return
+
     db = SessionLocal()
     try:
-        demo_email = "demo@moneymind.app"
+        demo_email = settings.DEMO_USER_EMAIL.lower().strip()
         existing = db.query(User).filter(User.email == demo_email).first()
         if not existing:
             demo_user = User(
                 id="usr_demo_8821",
                 email=demo_email,
                 name="Alex Morgan",
-                password_hash=hash_password("Demo123!"),
+                password_hash=hash_password(settings.DEMO_USER_PASSWORD),
                 is_demo=True
             )
             db.add(demo_user)
             db.commit()
-            logger.info("Demo user 'demo@moneymind.app' successfully seeded.")
+            db.refresh(demo_user)
+            logger.info(f"Demo user '{demo_email}' seeded.")
+
+            # Seed initial demo financial records directly into database
+            from datetime import date, timedelta
+            from decimal import Decimal
+            from backend.models import Expense, Goal
+
+            today = date.today()
+            sample_expenses = [
+                Expense(user_id=demo_user.id, type="income", amount=Decimal("85000.00"), category="Salary", date=today - timedelta(days=18), note="Monthly tech salary"),
+                Expense(user_id=demo_user.id, type="income", amount=Decimal("15000.00"), category="Freelance", date=today - timedelta(days=7), note="Design consulting client"),
+                Expense(user_id=demo_user.id, type="expense", amount=Decimal("22000.00"), category="Rent", date=today - timedelta(days=14), note="Monthly apartment rent"),
+                Expense(user_id=demo_user.id, type="expense", amount=Decimal("3450.00"), category="Food", date=today - timedelta(days=2), note="Weekly organic groceries"),
+                Expense(user_id=demo_user.id, type="expense", amount=Decimal("1250.00"), category="Food", date=today - timedelta(days=5), note="Dinner with colleagues"),
+                Expense(user_id=demo_user.id, type="expense", amount=Decimal("850.00"), category="Transport", date=today - timedelta(days=1), note="Metro & cab passes"),
+                Expense(user_id=demo_user.id, type="expense", amount=Decimal("2100.00"), category="Bills", date=today - timedelta(days=10), note="Electricity & broadband"),
+                Expense(user_id=demo_user.id, type="expense", amount=Decimal("4800.00"), category="Shopping", date=today - timedelta(days=8), note="Running shoes & gear"),
+                Expense(user_id=demo_user.id, type="expense", amount=Decimal("650.00"), category="Entertainment", date=today - timedelta(days=3), note="Weekend movies"),
+            ]
+            sample_goal = Goal(
+                user_id=demo_user.id,
+                name="Emergency Fund",
+                target_amount=Decimal("150000.00"),
+                saved_so_far=Decimal("65000.00"),
+                target_date=today + timedelta(days=180)
+            )
+            db.add_all(sample_expenses)
+            db.add(sample_goal)
+            db.commit()
+            logger.info("Demo financial data seeded to database.")
     except Exception as e:
         logger.error(f"Error seeding demo user: {e}")
         db.rollback()
@@ -53,12 +87,12 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(
     title=settings.APP_NAME,
-    description="Production-ready REST API data layer for MoneyMind financial dashboard.",
+    description="REST API data layer for MoneyMind, a full-stack personal finance application supporting authenticated expense tracking, savings goals, and AI-assisted financial tips.",
     version="1.0.0",
     lifespan=lifespan
 )
 
-# CORS Configuration
+# CORS Configuration with restricted origins
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.ALLOWED_ORIGINS,
@@ -66,6 +100,7 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
 
 # Centralized Error Handlers
 @app.exception_handler(StarletteHTTPException)
@@ -79,6 +114,8 @@ async def http_exception_handler(request: Request, exc: StarletteHTTPException):
         }
     )
 
+from fastapi.encoders import jsonable_encoder
+
 @app.exception_handler(RequestValidationError)
 async def validation_exception_handler(request: Request, exc: RequestValidationError):
     errors = []
@@ -88,13 +125,14 @@ async def validation_exception_handler(request: Request, exc: RequestValidationE
         errors.append(f"{field}: {msg}")
     return JSONResponse(
         status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-        content={
+        content=jsonable_encoder({
             "error": True,
             "status_code": status.HTTP_422_UNPROCESSABLE_ENTITY,
             "detail": "; ".join(errors),
             "errors": exc.errors()
-        }
+        })
     )
+
 
 @app.exception_handler(Exception)
 async def unhandled_exception_handler(request: Request, exc: Exception):
@@ -113,8 +151,10 @@ app.include_router(auth.router)
 app.include_router(expenses.router)
 app.include_router(goals.router)
 app.include_router(ai.router)
+app.add_api_route("/api/suggestions", ai.get_suggestions, methods=["POST"], response_model=ai.AISuggestionsResponse, tags=["AI Budget Coaching"])
 
 @app.get("/api/health", tags=["Health"])
+
 def health_check():
     db_dialect = engine.dialect.name
     return {

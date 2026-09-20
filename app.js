@@ -128,8 +128,22 @@ const apiClient = {
         });
         if (!res.ok) throw new Error((await res.json())?.detail || 'Failed to delete goal');
         return res.json();
+    },
+
+    async getAISuggestions(summary) {
+        const res = await fetch(`${API_BASE_URL}/api/ai/suggestions`, {
+            method: 'POST',
+            headers: this.getHeaders(),
+            body: JSON.stringify({ summary })
+        });
+        if (!res.ok) {
+            const err = await res.json().catch(() => ({}));
+            throw new Error(err.detail || err.error || `HTTP error ${res.status}`);
+        }
+        return res.json();
     }
 };
+
 
 // Dynamic Tenant Storage Scoping
 function getDataStorageKey() {
@@ -931,7 +945,6 @@ async function handleCSVFileSelected(event) {
             }
 
             const tx = {
-                id: 'csv_' + Date.now() + '_' + Math.random().toString(36).substring(2, 7),
                 date: dateVal,
                 type: typeVal,
                 category: catVal,
@@ -939,9 +952,21 @@ async function handleCSVFileSelected(event) {
                 amount: amountVal
             };
 
-            appData.expenses.unshift(tx);
+            if (window.authService?.isAuthenticated() && window.authService?.currentSession?.token) {
+                try {
+                    const saved = await apiClient.createExpense(tx);
+                    appData.expenses.unshift(saved);
+                } catch (err) {
+                    tx.id = 'csv_' + Date.now() + '_' + Math.random().toString(36).substring(2, 7);
+                    appData.expenses.unshift(tx);
+                }
+            } else {
+                tx.id = 'csv_' + Date.now() + '_' + Math.random().toString(36).substring(2, 7);
+                appData.expenses.unshift(tx);
+            }
             count++;
         }
+
 
         if (count > 0) {
             saveData();
@@ -1014,7 +1039,7 @@ function deleteRecurringRule(id) {
     showToast("Recurring rule deleted", "info");
 }
 
-function processDueRecurringNow() {
+async function processDueRecurringNow() {
     if (!appData.recurring || appData.recurring.length === 0) {
         showToast("No recurring rules configured", "info");
         return;
@@ -1022,16 +1047,29 @@ function processDueRecurringNow() {
     const today = new Date().toISOString().split('T')[0];
     let processed = 0;
 
-    appData.recurring.forEach(rule => {
+    for (const rule of appData.recurring) {
         if (rule.nextDate <= today) {
-            appData.expenses.unshift({
-                id: 'rec_tx_' + Date.now() + '_' + Math.random().toString(36).substring(2, 6),
+            const txData = {
                 date: rule.nextDate,
                 type: rule.type,
                 category: rule.category,
                 note: (rule.note || '') + ' (Recurring)',
                 amount: rule.amount
-            });
+            };
+
+            if (window.authService?.isAuthenticated() && window.authService?.currentSession?.token) {
+                try {
+                    const saved = await apiClient.createExpense(txData);
+                    appData.expenses.unshift(saved);
+                } catch {
+                    txData.id = 'rec_tx_' + Date.now() + '_' + Math.random().toString(36).substring(2, 6);
+                    appData.expenses.unshift(txData);
+                }
+            } else {
+                txData.id = 'rec_tx_' + Date.now() + '_' + Math.random().toString(36).substring(2, 6);
+                appData.expenses.unshift(txData);
+            }
+
             const d = new Date(rule.nextDate);
             if (rule.frequency === 'weekly') d.setDate(d.getDate() + 7);
             else if (rule.frequency === 'monthly') d.setMonth(d.getMonth() + 1);
@@ -1039,7 +1077,7 @@ function processDueRecurringNow() {
             rule.nextDate = d.toISOString().split('T')[0];
             processed++;
         }
-    });
+    }
 
     if (processed > 0) {
         saveData();
@@ -1050,6 +1088,7 @@ function processDueRecurringNow() {
         showToast("No recurring transactions due today", "info");
     }
 }
+
 
 function renderRecurringRules() {
     const list = document.getElementById('modal-recurring-list');
@@ -1656,7 +1695,7 @@ async function fetchAISuggestions(forceRefresh = false) {
         }
     }
 
-    // 3. Fetch Fresh Suggestions from Serverless Function (/api/suggestions)
+    // 3. Fetch Fresh Suggestions from Authenticated API (/api/ai/suggestions)
     if (els.aiLoading) els.aiLoading.classList.remove('hidden');
     if (els.aiSuggestionsList) els.aiSuggestionsList.classList.add('hidden');
     if (els.aiEmpty) els.aiEmpty.classList.add('hidden');
@@ -1666,24 +1705,11 @@ async function fetchAISuggestions(forceRefresh = false) {
     const summary = buildSpendingSummary();
 
     try {
-        const response = await fetch(`${API_BASE_URL}/api/suggestions`, {
-            method: "POST",
-            headers: {
-                "Content-Type": "application/json"
-            },
-            body: JSON.stringify(summary)
-        });
-
-        if (!response.ok) {
-            const errData = await response.json().catch(() => ({}));
-            throw new Error(errData?.error || `HTTP error ${response.status}`);
-        }
-
-        const data = await response.json();
+        const data = await apiClient.getAISuggestions(summary);
         const suggestions = Array.isArray(data) ? data : data.suggestions;
 
         if (!Array.isArray(suggestions) || suggestions.length === 0) {
-            throw new Error("Invalid response format from /api/suggestions");
+            throw new Error("Invalid response format from AI suggestions");
         }
 
         // Cache the successful result scoped to user
@@ -1699,6 +1725,7 @@ async function fetchAISuggestions(forceRefresh = false) {
         console.warn("AI Suggestions API Error (handled quietly):", err);
         if (els.aiLoading) els.aiLoading.classList.add('hidden');
         if (els.aiSuggestionsList) els.aiSuggestionsList.classList.add('hidden');
+
         if (els.aiEmpty) els.aiEmpty.classList.add('hidden');
         if (els.aiError) {
             if (els.aiErrorMsg) {

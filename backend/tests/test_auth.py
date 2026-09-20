@@ -69,3 +69,38 @@ def test_health_check(client):
     data = response.json()
     assert data["status"] == "healthy"
     assert "database_dialect" in data
+
+def test_get_current_user_profile(client, auth_headers, auth_user):
+    response = client.get("/api/auth/me", headers=auth_headers)
+    assert response.status_code == 200
+    data = response.json()
+    assert data["id"] == auth_user.id
+    assert data["email"] == auth_user.email
+    assert data["name"] == auth_user.name
+
+def test_get_current_user_profile_unauthorized(client):
+    response = client.get("/api/auth/me")
+    assert response.status_code == 401
+    assert "token required" in response.json()["detail"].lower()
+
+def test_unauthenticated_user_lookup_endpoint_removed(client):
+    response = client.get("/api/auth/users/usr_test_123")
+    assert response.status_code == 404
+
+def test_config_dev_secret_fallback():
+    from backend.config import Settings, DEV_FALLBACK_SECRET
+    s = Settings(ENVIRONMENT="development", SECRET_KEY="")
+    assert s.SECRET_KEY == DEV_FALLBACK_SECRET
+
+def test_config_production_secret_enforced():
+    import pytest
+    from backend.config import Settings
+    with pytest.raises(ValueError, match="SECRET_KEY must be configured"):
+        Settings(ENVIRONMENT="production", SECRET_KEY="")
+
+def test_config_allowed_origins_parsing():
+    from backend.config import Settings
+    s = Settings(ALLOWED_ORIGINS="http://localhost:8000,http://localhost:3000")
+    assert s.ALLOWED_ORIGINS == ["http://localhost:8000", "http://localhost:3000"]
+
+
